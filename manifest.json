@@ -1,0 +1,9 @@
+{
+  "id": "karpathy",
+  "name": "Karpathy",
+  "version": "1.1.0",
+  "minAppVersion": "1.8.7",
+  "description": "A calm, local-first capture stream backed by daily Markdown notes.",
+  "author": "da5is",
+  "isDesktopOnly": false
+}

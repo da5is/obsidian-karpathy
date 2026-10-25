@@ -22,8 +22,19 @@ test("local daily and attachment layout handles month and year boundaries", () =
 
 test("base path validation prevents hidden and out-of-vault destinations", () => {
   assert.equal(baseFolder(" Notes\\Stream/ "), "Notes/Stream");
-  for (const value of ["", "/", "../Notes", "Notes/../Other", ".obsidian", "Notes/.hidden", "C:\\Notes", "a//b", "a?b"]) {
+  for (const value of ["//", "/Notes", "../Notes", "Notes/../Other", ".obsidian", "Notes/.hidden", "C:\\Notes", "a//b", "a?b"]) {
     assert.throws(() => baseFolder(value));
+  }
+});
+
+test("vault root aliases generate relative paths and recognize only the root daily layout", () => {
+  for (const base of ["", "  ", "/", " / "]) {
+    assert.equal(baseFolder(base), "");
+    assert.equal(dailyPath(base, new Date(2026, 9, 25)), "2026/2026-10/2026-10-25.md");
+    assert.equal(attachmentFolder(base, new Date(2026, 9, 25)), "2026/2026-10/attachments");
+    assert.equal(isDailyPath(base, "2026/2026-10/2026-10-25.md"), true);
+    assert.equal(isDailyPath(base, path), false);
+    assert.equal(isDailyPath(base, "README.md"), false);
   }
 });
 

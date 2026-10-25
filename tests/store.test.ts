@@ -6,6 +6,28 @@ import { Store } from "../src/store";
 
 after(closeDOM);
 
+test("root storage supports attachments, capture, search, rescue and reopening", async () => {
+  const app = new App();
+  const store = new Store(app, "");
+  const date = new Date(2026, 8, 30, 12);
+  const link = await store.attachment(new File(["image"], "photo.png", { type: "image/png" }), date);
+  assert.equal(link, "![[2026/2026-09/attachments/photo.png]]");
+  await store.capture(`read: root capture\n\n${link}`, date, "root-entry");
+  await app.vault.create("unrelated.md", "Keep this ordinary note");
+  const page = await store.page({ file: 0, offset: 0 }, 1, "root capture");
+  assert.equal(page.entries.length, 1);
+  const entry = page.entries[0];
+  assert.equal(entry.path, "2026/2026-09/2026-09-30.md");
+  await store.rescue(entry, new Date(2026, 9, 25, 12));
+  const reopened = new Store(app, "");
+  assert.equal(await reopened.countEntries(), 1);
+  const moved = (await reopened.page({ file: 0, offset: 0 }, 1, "root capture")).entries[0];
+  assert.equal(moved.path, "2026/2026-10/2026-10-25.md");
+  assert.equal(moved.body, entry.body);
+  assert.equal(moved.rescues, 1);
+  assert.equal(app.vault.texts.get("unrelated.md"), "Keep this ordinary note");
+});
+
 test("header count totals entries, caches counts, and stays unchanged by rescue", async () => {
   const { app, store } = fixture();
   await store.capture("first", new Date(2026, 8, 1), "count-1");

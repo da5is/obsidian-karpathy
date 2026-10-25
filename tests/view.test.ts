@@ -10,6 +10,27 @@ import { DEFAULT_SETTINGS, parseSettings, themePrefixColor } from "../src/settin
 
 after(closeDOM);
 
+test("root settings persist and root vault events refresh the stream", async () => {
+  assert.equal(parseSettings({}).baseFolder, "Karpathy");
+  for (const baseFolder of ["", "/"]) {
+    const parsed = parseSettings({ baseFolder, hiddenFolders: ["/", "", "Archive"] });
+    assert.equal(parsed.baseFolder, "");
+    assert.deepEqual(parseSettings(parsed), parsed);
+    assert.deepEqual(parsed.hiddenFolders, ["Archive"]);
+  }
+  const { plugin, app } = fixture();
+  let saved: unknown;
+  plugin.saveData = async value => { saved = value; };
+  await plugin.changeBase("/");
+  assert.equal(parseSettings(saved).baseFolder, "");
+  assert.equal(plugin.store.base, "");
+  const file = await app.vault.create("2026/2026-10/2026-10-25.md", "external change");
+  let refreshed = false;
+  plugin.changed = () => { refreshed = true; };
+  (plugin as any).fileChanged(file);
+  assert.equal(refreshed, true);
+});
+
 test("first use remembers new prefixes with theme colors, excludes URLs, and preserves custom colors", async () => {
   const { plugin } = fixture();
   let saved: unknown;

@@ -52,7 +52,7 @@ export function parseSettings(input: unknown): Settings {
   return {
     baseFolder: folder,
     openOnStartup: typeof value.openOnStartup === "boolean" ? value.openOnStartup : true,
-    hiddenFolders: Array.isArray(value.hiddenFolders) ? value.hiddenFolders.filter((p): p is string => typeof p === "string").map(baseFolder) : [],
+    hiddenFolders: Array.isArray(value.hiddenFolders) ? value.hiddenFolders.filter((p): p is string => typeof p === "string").map(baseFolder).filter(Boolean) : [],
     prefixColors: colors,
     prefixDefaultsVersion: 2
   };
@@ -66,8 +66,8 @@ export class KarpathySettingsTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "Karpathy" });
     containerEl.createEl("p", { text: "Daily Markdown files, one continuous stream. All settings are vault-local." });
     new Setting(containerEl).setName("Base notes folder")
-      .setDesc("Files use yyyy/yyyy-mm/yyyy-mm-dd.md. Changing this does not move existing notes or attachments.")
-      .addText(text => text.setValue(this.plugin.settings.baseFolder).onChange(value => { text.inputEl.dataset.pending = value; }))
+      .setDesc("Leave blank or enter / for the vault root. Files use yyyy/yyyy-mm/yyyy-mm-dd.md. Changing this does not move existing notes or attachments.")
+      .addText(text => text.setPlaceholder("Vault root").setValue(this.plugin.settings.baseFolder).onChange(value => { text.inputEl.dataset.pending = value; }))
       .addButton(button => button.setButtonText("Apply").onClick(() => {
         const input = containerEl.querySelector<HTMLInputElement>("input[type=text]");
         if (!input) return;
@@ -87,7 +87,7 @@ export class KarpathySettingsTab extends PluginSettingTab {
         text.inputEl.addEventListener("blur", () => {
           void (async () => {
             try {
-              this.plugin.settings.hiddenFolders = text.getValue().split(/\r?\n/).filter(p => p.trim()).map(baseFolder);
+              this.plugin.settings.hiddenFolders = text.getValue().split(/\r?\n/).filter(p => p.trim()).map(baseFolder).filter(Boolean);
               await this.plugin.persistSettings();
               this.plugin.applyFolderHiding();
             } catch (error) { this.plugin.report(error); }

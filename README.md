@@ -25,7 +25,9 @@ Karpathy/2026/2026-10/2026-10-25.md
 Karpathy/2026/2026-10/attachments/
 ```
 
-The base folder is configurable. Entries use HTML comments for boundaries and metadata. Rescue moves the original into today's file while retaining its creation time and existing attachment links. Incremental loading and bounded caches keep the stream from rendering your entire history at once.
+The base folder is configurable. Leave **Base notes folder** blank (or enter `/`) and click **Apply** to use the vault root: `2026/2026-10/2026-10-25.md`, with attachments in `2026/2026-10/attachments/`. Changing the folder does not move existing files or import arbitrary Markdown notes into the stream.
+
+Entries use HTML comments for boundaries and metadata. Rescue moves the original into today's file while retaining its creation time and existing attachment links. Incremental loading and bounded caches keep the stream from rendering your entire history at once.
 
 ## Install with BRAT
 

@@ -98,7 +98,7 @@ export default class KarpathyPlugin extends Plugin {
 
   private fileChanged(file: TAbstractFile, oldPath?: string): void {
     const base = this.settings.baseFolder;
-    const relevant = (path: string) => path === base || path.startsWith(`${base}/`) || base.startsWith(`${path}/`);
+    const relevant = (path: string) => !base || path === base || path.startsWith(`${base}/`) || base.startsWith(`${path}/`);
     if (!relevant(file.path) && (!oldPath || !relevant(oldPath))) return;
     this.store.invalidate(file.path);
     if (!(file instanceof TFile) || file.extension === "md" || oldPath?.endsWith(".md")) this.changed();
@@ -125,7 +125,7 @@ export default class KarpathyPlugin extends Plugin {
     this.store.clear();
     this.store.reindex();
     for (const view of this.views()) await view.reconfigure();
-    new Notice(`Karpathy now reads and writes in ${folder}. Existing files have not been moved.`);
+    new Notice(`Karpathy now reads and writes in ${folder || "the vault root"}. Existing files have not been moved.`);
   }
 
   async persistSettings(): Promise<void> {

@@ -37,10 +37,11 @@ export function uniqueId(): string {
 }
 
 export function baseFolder(value: string): string {
+  if (!value.trim() || value.trim() === "/") return "";
   const path = value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (!path || path.startsWith("/") || /[<>:"|?*\u0000-\u001f]/.test(path) ||
       path.split("/").some(part => !part || part === "." || part === ".." || part.startsWith("."))) {
-    throw new Error("Choose a non-hidden folder inside this vault, such as Karpathy or Notes/Stream.");
+    throw new Error("Choose a non-hidden folder inside this vault, or leave blank for the vault root.");
   }
   return path;
 }
@@ -51,7 +52,8 @@ export function localDay(date: Date): string {
 
 export function dailyPath(base: string, date: Date): string {
   const day = localDay(date);
-  return `${baseFolder(base)}/${day.slice(0, 4)}/${day.slice(0, 7)}/${day}.md`;
+  const folder = baseFolder(base);
+  return `${folder ? `${folder}/` : ""}${day.slice(0, 4)}/${day.slice(0, 7)}/${day}.md`;
 }
 
 export function attachmentFolder(base: string, date: Date): string {
@@ -60,7 +62,8 @@ export function attachmentFolder(base: string, date: Date): string {
 }
 
 export function isDailyPath(base: string, path: string): boolean {
-  const prefix = `${base}/`;
+  const folder = baseFolder(base);
+  const prefix = folder ? `${folder}/` : "";
   if (!path.startsWith(prefix)) return false;
   const match = /^(\d{4})\/(\d{4}-\d{2})\/(\d{4}-\d{2}-\d{2})\.md$/.exec(path.slice(prefix.length));
   if (!match || match[1] !== match[3].slice(0, 4) || match[2] !== match[3].slice(0, 7)) return false;

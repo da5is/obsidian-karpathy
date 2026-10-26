@@ -13,6 +13,19 @@
   height: 100%;
 }
 
+/* Phone navigation reserves space separately from the hidden view header. */
+.is-phone .workspace-leaf-content[data-type="karpathy-stream"] {
+  --view-top-spacing: 0px;
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+}
+
+.is-phone .mod-root .workspace-leaf-content[data-type="karpathy-stream"] > .view-content {
+  margin-top: 0;
+  height: auto;
+  flex: 1 1 0;
+}
+
 .karpathy-view,
 .karpathy-edit-modal {
   --karpathy-ui-font-size: max(15px, var(--font-ui-medium, 14px));

@@ -23,7 +23,11 @@ Tests use `node:test`, assertions, jsdom, and Obsidian/Electron mocks. Name file
 
 ## Commit & Pull Request Guidelines
 
-History currently contains one commit, `Publish Karpathy Obsidian plugin`; follow its concise, imperative style. PRs should describe the behavior changed, validation performed, and remaining limitations. Link relevant issues and include screenshots for visible UI changes. Releases require matching version metadata and the three installation assets above.
+Use concise, imperative commit messages. PRs should describe behavior changes, validation, limitations, and relevant issues; include screenshots for visible changes.
+
+## Default Delivery Workflow
+
+Until the user changes this instruction, complete requested changes by committing, pushing to `main`, and publishing a new BRAT-compatible release without another confirmation. Honor requests to plan, review, or keep work local. Run checks first; increment version metadata, attach `main.js`, `manifest.json`, and `styles.css`, and verify published files match the build. Never include unrelated changes.
 
 ## Data Safety & Local Workspace
 

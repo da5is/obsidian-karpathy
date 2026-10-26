@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { EditorView } from "@codemirror/view";
 import { App, closeDOM, Platform } from "./obsidian-mock";
 import { shell } from "./electron-mock";
 import KarpathyPlugin from "../src/main";
@@ -327,47 +328,41 @@ test("closing and reopening the view preserves the unsaved text draft", async ()
   await reopened.onClose();
 });
 
-test("software-keyboard paragraph input can submit without a keydown event", async () => {
-  const { app, view } = fixture();
-  await view.onOpen();
-  const editor = view["editor"]!;
-  editor.insert("mobile thought\n");
-  const second = new Event("beforeinput", { bubbles: true, cancelable: true });
-  Object.defineProperties(second, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
-  editor.view.contentDOM.dispatchEvent(second);
-  assert.equal(second.defaultPrevented, false);
-  assert.equal(app.vault.getMarkdownFiles().length, 0);
-  // The simulated DOM does not perform the browser's default text insertion.
-  editor.insert("\n");
-  const event = new Event("beforeinput", { bubbles: true, cancelable: true });
-  Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
-  editor.view.contentDOM.dispatchEvent(event);
-  assert.equal(event.defaultPrevented, true);
-  await until(() => editor.body === "");
-  assert.equal(app.vault.getMarkdownFiles().length, 1);
-  await view.onClose();
-});
-
-test("uncancellable mobile Return saves after insertion and leaves the next draft on line one", async () => {
-  const { app, view } = fixture();
-  await view.onOpen();
-  const editor = view["editor"]!;
-  editor.insert("mobile thought\n\n");
-  const event = new Event("beforeinput", { bubbles: true, cancelable: false });
-  Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
-  editor.view.contentDOM.dispatchEvent(event);
-  assert.equal(app.vault.getMarkdownFiles().length, 0);
-  // Model the native newline being reconciled into CodeMirror after beforeinput.
-  editor.view.dispatch({ changes: { from: editor.body.length, insert: "\n" }, selection: { anchor: editor.body.length + 1 }, userEvent: "input" });
-  await until(() => editor.body === "");
-  assert.equal(editor.view.state.selection.main.head, 0);
-  assert.equal(editor.view.state.doc.lines, 1);
-  assert.equal(editor.view.hasFocus, true);
-  editor.insert("Next thought");
-  assert.equal(editor.body, "Next thought");
-  assert.equal(app.vault.getMarkdownFiles().length, 1);
-  await view.onClose();
-});
+for (const cancelable of [true, false]) {
+  test(`native paragraph input (cancelable=${cancelable}) saves only after the third Return`, async () => {
+    const { app, view } = fixture();
+    await view.onOpen();
+    try {
+      const editor = view["editor"]!;
+      editor.insert("mobile thought\n");
+      const nativeReturn = () => {
+        const event = new Event("beforeinput", { bubbles: true, cancelable });
+        Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
+        editor.view.contentDOM.dispatchEvent(event);
+        assert.equal(event.defaultPrevented, false);
+        // CodeMirror hands normalized native input to its public input handlers.
+        const cm = editor.view;
+        const from = cm.state.selection.main.from;
+        const to = cm.state.selection.main.to;
+        const insert = () => cm.state.update({ changes: { from, to, insert: "\n" }, selection: { anchor: from + 1 }, userEvent: "input.type" });
+        if (!cm.state.facet(EditorView.inputHandler).some(handler => handler(cm, from, to, "\n", insert))) cm.dispatch(insert());
+      };
+      nativeReturn();
+      await until(() => editor.body === "mobile thought\n\n");
+      assert.equal(app.vault.getMarkdownFiles().length, 0);
+      nativeReturn();
+      await until(() => editor.body === "");
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(editor.body, "");
+      assert.equal(editor.view.state.selection.main.head, 0);
+      assert.equal(editor.view.state.doc.lines, 1);
+      assert.equal(editor.view.hasFocus, true);
+      editor.insert("Next thought");
+      assert.equal(editor.body, "Next thought");
+      assert.equal(app.vault.getMarkdownFiles().length, 1);
+    } finally { await view.onClose(); }
+  });
+}
 
 test("header and composer share the stream scroller and footer actions retain accessible names", async () => {
   const { plugin, view } = fixture();

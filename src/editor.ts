@@ -30,7 +30,6 @@ export class CaptureEditor {
   private uploads = new Set<Promise<void>>();
   private destroyed = false;
   private hotkeys: KeymapEventHandler[] = [];
-  private nativeSubmit = false;
 
   constructor(parent: HTMLElement, private options: EditorOptions) {
     const prefix = ViewPlugin.fromClass(class {
@@ -69,28 +68,16 @@ export class CaptureEditor {
           placeholder("Capture a thought..."),
           EditorView.contentAttributes.of({ "aria-label": "Entry Markdown editor", spellcheck: "true", autocapitalize: "sentences" }),
           EditorView.updateListener.of(update => {
-            if (update.docChanged) {
-              options.change(update.state.doc.toString());
-              if (this.nativeSubmit) {
-                this.nativeSubmit = false;
-                // Let an uncancellable mobile Return reach CodeMirror before clearing the draft.
-                queueMicrotask(() => {
-                  if (!this.destroyed && /\n[ \t]*\n[ \t]*\n[ \t]*$/.test(this.body)) this.submitOnBlankLine(this.view);
-                });
-              }
-            }
+            if (update.docChanged) options.change(update.state.doc.toString());
+          }),
+          // CodeMirror replays iOS Return after native input. Saving in
+          // beforeinput races that replay and inserts a newline into the next draft.
+          // Use its keymap, with this fallback for keyboards that send only input.
+          EditorView.inputHandler.of((view, from, to, text) => {
+            if (text !== "\n" || from !== to || to !== view.state.doc.length) return false;
+            return this.submitOnBlankLine(view);
           }),
           EditorView.domEventHandlers({
-            beforeinput: (event, view) => {
-              if (event.isComposing || !["insertParagraph", "insertLineBreak"].includes(event.inputType)) return false;
-              if (!event.cancelable) {
-                this.nativeSubmit = this.canSubmit(view);
-                return false;
-              }
-              if (!this.submitOnBlankLine(view)) return false;
-              event.preventDefault();
-              return true;
-            },
             paste: event => {
               if (this.view.state.readOnly) return true;
               const files = Array.from(event.clipboardData?.files ?? []);
@@ -184,7 +171,6 @@ export class CaptureEditor {
   }
   setBody(body: string): void {
     if (this.destroyed) return;
-    this.nativeSubmit = false;
     this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: body }, selection: { anchor: 0 } });
   }
   insert(text: string): void {

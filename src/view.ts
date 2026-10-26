@@ -83,14 +83,15 @@ export class KarpathyView extends ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass("karpathy-view");
-    const header = root.createDiv({ cls: "karpathy-header karpathy-column" });
+    this.scroller = root.createDiv({ cls: "karpathy-scroller", attr: { tabindex: "0", "aria-label": "Notes stream" } });
+    const header = this.scroller.createDiv({ cls: "karpathy-header karpathy-column" });
     const titles = header.createDiv({ cls: "karpathy-header-titles" });
     this.heading = titles.createEl("h1");
     this.updateDateHeading();
     this.subtitle = titles.createDiv({ cls: "karpathy-subtitle" });
     const searchToggle = header.createEl("button", { cls: "karpathy-search-toggle", attr: { type: "button", title: "Search notes", "aria-label": "Search notes", "aria-expanded": "false" } });
     setIcon(searchToggle, "search");
-    const capture = root.createDiv({ cls: "karpathy-capture karpathy-column" });
+    const capture = this.scroller.createDiv({ cls: "karpathy-capture karpathy-column" });
     this.captureStatus = capture.createDiv({ cls: "karpathy-capture-status", attr: { role: "status", "aria-live": "polite" } });
     const captureActions = capture.createDiv({ cls: "karpathy-capture-actions" });
     this.attachmentButtons = [];
@@ -135,7 +136,6 @@ export class KarpathyView extends ItemView {
         void this.refresh(false).catch(error => this.plugin.report(error));
       }, 60);
     });
-    this.scroller = root.createDiv({ cls: "karpathy-scroller", attr: { tabindex: "0", "aria-label": "Notes stream" } });
     const stream = this.scroller.createDiv({ cls: "karpathy-column karpathy-stream" });
     this.newer = stream.createEl("button", { text: "Load newer entries", cls: "karpathy-page-button" });
     this.newer.addEventListener("click", () => { void this.loadPage(-1).catch(error => this.plugin.report(error)); });
@@ -392,6 +392,9 @@ export class KarpathyView extends ItemView {
         meta.createDiv({ text: rescueHistory(entry), cls: "karpathy-rescue-meta", attr: { title: `Written: ${displayDate(new Date(entry.created ?? entry.timestamp), { time: true })}${entry.rescues ? `; last rescued: ${displayDate(date, { time: true })}` : ""}` } });
         const actions = meta.createDiv({ cls: "karpathy-entry-actions" });
         const rescue = actions.createEl("button", { text: "↑ Rescue", attr: { "aria-label": "Rescue entry to the top", title: "Rescue to the top" } });
+        rescue.empty();
+        setIcon(rescue.createSpan({ cls: "karpathy-action-icon" }), "arrow-up");
+        rescue.createSpan({ cls: "karpathy-action-label", text: "Rescue" });
         const performRescue = async () => {
           if (rescue.disabled) return;
           rescue.disabled = true;
@@ -447,6 +450,10 @@ export class KarpathyView extends ItemView {
         element.addEventListener("touchcancel", resetSwipe);
         element.addEventListener("keydown", event => { if (event.key === "Escape") resetSwipe(); });
         const edit = actions.createEl("button", { text: "Edit", attr: { "aria-label": "Edit entry" } });
+        edit.empty();
+        edit.title = "Edit entry";
+        setIcon(edit.createSpan({ cls: "karpathy-action-icon" }), "pencil");
+        edit.createSpan({ cls: "karpathy-action-label", text: "Edit" });
         edit.addEventListener("click", () => new EntryEditor(this.plugin, entry).open());
         const source = actions.createEl("button", { text: "⋯", attr: { "aria-label": "More entry actions", title: "More actions" } });
         source.addEventListener("click", event => {

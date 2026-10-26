@@ -172,10 +172,9 @@
 .karpathy-entry-actions button { min-height: 48px; min-width: 48px; padding: 10px 12px; font-size: var(--karpathy-ui-font-size); }
 .karpathy-entry-actions button:first-child { min-width: 92px; }
 .karpathy-rescue-meta { line-height: 1.6; }
-@media (pointer: coarse) {
-  .karpathy-entry-actions button:first-child { flex: 1; background: var(--background-secondary); }
-  .karpathy-entry-actions button:nth-child(2) { flex: 1; }
-}
+.karpathy-entry-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.karpathy-action-icon { display: inline-flex; }
+.karpathy-action-icon svg { width: 18px; height: 18px; }
 .karpathy-entry-content { line-height: 1.65; font-size: var(--karpathy-note-font-size); user-select: text; }
 .karpathy-entry-content > :first-child { margin-top: 0; }
 .karpathy-entry-content > :last-child { margin-bottom: 0; }
@@ -200,7 +199,12 @@
   .karpathy-header h1 { font-size: 1.3em; }
   .karpathy-editor .cm-scroller { max-height: 23vh; }
   .karpathy-entry-surface { padding-block: 12px 18px; }
-  .karpathy-entry-actions button:first-child, .karpathy-entry-actions button:nth-child(2) { flex: 1; }
+  .karpathy-entry-meta { flex-wrap: nowrap; gap: 4px; margin-bottom: 0; }
+  .karpathy-rescue-meta { flex: 1 1 0; font-size: 13px; line-height: 1.5; }
+  .karpathy-entry-actions { gap: 0; }
+  .karpathy-entry-actions button,
+  .karpathy-entry-actions button:first-child { min-width: 44px; width: 44px; min-height: 44px; padding: 10px; background: transparent; }
+  .karpathy-action-label { display: none; }
   .karpathy-formatting button { min-height: 36px; }
   .karpathy-entry-content img { max-height: 320px; }
 }

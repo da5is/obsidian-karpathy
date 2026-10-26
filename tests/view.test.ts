@@ -341,6 +341,41 @@ test("software-keyboard paragraph input can submit without a keydown event", asy
   await view.onClose();
 });
 
+test("uncancellable mobile Return saves after insertion and leaves the next draft on line one", async () => {
+  const { app, view } = fixture();
+  await view.onOpen();
+  const editor = view["editor"]!;
+  editor.insert("mobile thought\n\n");
+  const event = new Event("beforeinput", { bubbles: true, cancelable: false });
+  Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
+  editor.view.contentDOM.dispatchEvent(event);
+  assert.equal(app.vault.getMarkdownFiles().length, 0);
+  // Model the native newline being reconciled into CodeMirror after beforeinput.
+  editor.view.dispatch({ changes: { from: editor.body.length, insert: "\n" }, selection: { anchor: editor.body.length + 1 }, userEvent: "input" });
+  await until(() => editor.body === "");
+  assert.equal(editor.view.state.selection.main.head, 0);
+  assert.equal(editor.view.state.doc.lines, 1);
+  assert.equal(editor.view.hasFocus, true);
+  editor.insert("Next thought");
+  assert.equal(editor.body, "Next thought");
+  assert.equal(app.vault.getMarkdownFiles().length, 1);
+  await view.onClose();
+});
+
+test("header and composer share the stream scroller and footer actions retain accessible names", async () => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("A note", new Date(), "layout");
+  await view.onOpen();
+  const scroller = view.contentEl.querySelector(".karpathy-scroller")!;
+  assert.equal(view.contentEl.querySelector(".karpathy-header")!.parentElement, scroller);
+  assert.equal(view.contentEl.querySelector(".karpathy-capture")!.parentElement, scroller);
+  const footer = scroller.querySelector(".karpathy-entry-meta")!;
+  assert.ok(footer.querySelector(".karpathy-rescue-meta"));
+  assert.ok(footer.querySelector('[aria-label="Rescue entry to the top"] .karpathy-action-icon'));
+  assert.ok(footer.querySelector('[aria-label="Edit entry"] .karpathy-action-icon'));
+  await view.onClose();
+});
+
 test("clipboard files and picker attachments insert at the original cursor and block premature saves", async () => {
   const parent = document.body.createDiv();
   let release!: (links: string[]) => void;

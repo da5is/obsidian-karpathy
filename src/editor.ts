@@ -30,6 +30,7 @@ export class CaptureEditor {
   private uploads = new Set<Promise<void>>();
   private destroyed = false;
   private hotkeys: KeymapEventHandler[] = [];
+  private nativeSubmit = false;
 
   constructor(parent: HTMLElement, private options: EditorOptions) {
     const prefix = ViewPlugin.fromClass(class {
@@ -68,11 +69,24 @@ export class CaptureEditor {
           placeholder("Capture a thought..."),
           EditorView.contentAttributes.of({ "aria-label": "Entry Markdown editor", spellcheck: "true", autocapitalize: "sentences" }),
           EditorView.updateListener.of(update => {
-            if (update.docChanged) options.change(update.state.doc.toString());
+            if (update.docChanged) {
+              options.change(update.state.doc.toString());
+              if (this.nativeSubmit) {
+                this.nativeSubmit = false;
+                // Let an uncancellable mobile Return reach CodeMirror before clearing the draft.
+                queueMicrotask(() => {
+                  if (!this.destroyed && /\n[ \t]*\n[ \t]*\n[ \t]*$/.test(this.body)) this.submitOnBlankLine(this.view);
+                });
+              }
+            }
           }),
           EditorView.domEventHandlers({
             beforeinput: (event, view) => {
               if (event.isComposing || !["insertParagraph", "insertLineBreak"].includes(event.inputType)) return false;
+              if (!event.cancelable) {
+                this.nativeSubmit = this.canSubmit(view);
+                return false;
+              }
               if (!this.submitOnBlankLine(view)) return false;
               event.preventDefault();
               return true;
@@ -145,12 +159,17 @@ export class CaptureEditor {
   }
 
   private submitOnBlankLine(view: EditorView): boolean {
+    if (!this.canSubmit(view)) return false;
+    this.options.save();
+    return true;
+  }
+
+  private canSubmit(view: EditorView): boolean {
     if (!this.options.tripleEnter || view.composing || view.state.readOnly) return false;
     const selection = view.state.selection.main;
     if (!selection.empty || selection.head !== view.state.doc.length) return false;
     const text = view.state.doc.toString();
     if (!text.trim() || !/\n[ \t]*\n[ \t]*$/.test(text)) return false;
-    this.options.save();
     return true;
   }
 
@@ -165,7 +184,8 @@ export class CaptureEditor {
   }
   setBody(body: string): void {
     if (this.destroyed) return;
-    this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: body } });
+    this.nativeSubmit = false;
+    this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: body }, selection: { anchor: 0 } });
   }
   insert(text: string): void {
     if (this.destroyed || this.view.state.readOnly) return;

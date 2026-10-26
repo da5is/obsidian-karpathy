@@ -1,5 +1,16 @@
-.workspace-leaf-content[data-type="karpathy-stream"] .view-content {
+.workspace-leaf-content[data-type="karpathy-stream"] {
+  --view-header-height: 0px;
+}
+
+.workspace-leaf-content[data-type="karpathy-stream"] > .view-header {
+  display: none;
+}
+
+.workspace-leaf-content[data-type="karpathy-stream"] > .view-content {
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .karpathy-view,
@@ -152,7 +163,8 @@
 .karpathy-search input { width: 100%; border-radius: 8px; box-shadow: none; }
 .karpathy-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none; }
 .karpathy-stream { padding-bottom: max(32px, env(safe-area-inset-bottom)); }
-.karpathy-entry { position: relative; overflow: hidden; border-radius: 12px; margin-block: 8px; overflow-wrap: anywhere; }
+.karpathy-entry { position: relative; overflow: hidden; margin: 0; overflow-wrap: anywhere; }
+.karpathy-entry + .karpathy-entry { border-top: 1px solid var(--background-modifier-border); }
 .karpathy-entry-surface { position: relative; display: flex; flex-direction: column; padding-block: 14px 18px; background: var(--background-primary); }
 .karpathy-entry-content { order: 1; }
 .karpathy-entry-meta { order: 3; margin-top: 4px; flex-wrap: wrap; }

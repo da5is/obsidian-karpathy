@@ -5,6 +5,7 @@ import { baseFolder } from "./model";
 export interface Settings {
   baseFolder: string;
   openOnStartup: boolean;
+  hideSidebars: boolean;
   hiddenFolders: string[];
   prefixColors: Record<string, string>;
   prefixDefaultsVersion: number;
@@ -32,6 +33,7 @@ function resolvedHex(parent: HTMLElement, color: string): string {
 export const DEFAULT_SETTINGS: Settings = {
   baseFolder: "Karpathy",
   openOnStartup: true,
+  hideSidebars: false,
   hiddenFolders: [],
   prefixColors: Object.fromEntries(["todo", "read", "buy", "ref"].map(prefix => [prefix, themePrefixColor(prefix)])),
   prefixDefaultsVersion: 2
@@ -52,6 +54,7 @@ export function parseSettings(input: unknown): Settings {
   return {
     baseFolder: folder,
     openOnStartup: typeof value.openOnStartup === "boolean" ? value.openOnStartup : true,
+    hideSidebars: value.hideSidebars === true,
     hiddenFolders: Array.isArray(value.hiddenFolders) ? value.hiddenFolders.filter((p): p is string => typeof p === "string").map(baseFolder).filter(Boolean) : [],
     prefixColors: colors,
     prefixDefaultsVersion: 2
@@ -78,6 +81,11 @@ export class KarpathySettingsTab extends PluginSettingTab {
       .addToggle(toggle => toggle.setValue(this.plugin.settings.openOnStartup).onChange(async value => {
         this.plugin.settings.openOnStartup = value;
         await this.plugin.persistSettings();
+      }));
+    new Setting(containerEl).setName("Hide sidebars")
+      .setDesc("Hide both sidebars and the left ribbon throughout this vault. Use Karpathy: Toggle hidden sidebars in the command palette to restore them.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.hideSidebars).onChange(value => {
+        void this.plugin.setSidebarsHidden(value).catch(error => this.plugin.report(error));
       }));
     new Setting(containerEl).setName("Hidden folders")
       .setDesc("One vault-relative folder per line. Hide only in the file explorer; files and links remain accessible. Blank hides nothing.")

@@ -15,6 +15,7 @@ export default class KarpathyPlugin extends Plugin {
   private refreshTimer?: number;
   editing = 0;
   private prefixWrites: Promise<void> = Promise.resolve();
+  private sidebarDocuments = new Set<Document>();
 
   async onload(): Promise<void> {
     // Invalid persisted paths must not quietly redirect writes to another folder.
@@ -23,6 +24,11 @@ export default class KarpathyPlugin extends Plugin {
     await this.store.recoverRescue().catch(error => this.report(error));
     this.registerView(VIEW_TYPE, leaf => new KarpathyView(leaf, this));
     this.addSettingTab(new KarpathySettingsTab(this.app, this));
+    this.addCommand({ id: "toggle-sidebars", name: "Toggle hidden sidebars", callback: () => {
+      void this.setSidebarsHidden(!this.settings.hideSidebars).catch(error => this.report(error));
+    } });
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.applySidebarHiding()));
+    this.register(() => this.clearSidebarHiding());
     this.addRibbonIcon("notebook-pen", "Open Karpathy", () => { void this.open().catch(error => this.report(error)); });
     this.addCommand({ id: "open-stream", name: "Open stream", callback: () => { void this.open().catch(error => this.report(error)); } });
     this.addCommand({ id: "capture", name: "Capture a thought", callback: () => {
@@ -48,6 +54,7 @@ export default class KarpathyPlugin extends Plugin {
       this.fileChanged(file, oldPath);
     }));
     this.app.workspace.onLayoutReady(() => {
+      this.applySidebarHiding();
       this.applyFolderHiding();
       if (this.settings.openOnStartup) void this.open().catch(error => this.report(error));
     });
@@ -176,6 +183,31 @@ export default class KarpathyPlugin extends Plugin {
   private unhide(): void {
     for (const document of this.documents()) {
       document.querySelectorAll(".karpathy-hidden-folder").forEach(element => element.classList.remove("karpathy-hidden-folder"));
+    }
+  }
+  async setSidebarsHidden(hidden: boolean): Promise<void> {
+    const next = { ...this.settings, hideSidebars: hidden };
+    await this.saveData(next);
+    this.settings = next;
+    this.applySidebarHiding();
+  }
+
+  private clearSidebarHiding(): void {
+    for (const doc of this.sidebarDocuments) {
+      doc.body.classList.remove("karpathy-hide-sidebars");
+      doc.querySelector(".karpathy-show-sidebars")?.remove();
+    }
+    this.sidebarDocuments.clear();
+  }
+
+  applySidebarHiding(): void {
+    if (!this.settings.hideSidebars) { this.clearSidebarHiding(); return; }
+    const documents = new Set<Document>([document]);
+    this.app.workspace.iterateAllLeaves(leaf => { documents.add(leaf.view.containerEl.ownerDocument); });
+    for (const doc of documents) {
+      this.sidebarDocuments.add(doc);
+      doc.body.classList.add("karpathy-hide-sidebars");
+
     }
   }
   private documents(): Document[] {

@@ -385,7 +385,6 @@ export class KarpathyView extends ItemView {
         const element = document.createElement("article");
         element.className = "karpathy-entry";
         element.dataset.entryId = entry.id;
-        const rail = element.createEl("button", { text: "↑ Rescue", cls: "karpathy-rescue-rail", attr: { "aria-label": "Rescue this entry", tabindex: "-1", "aria-hidden": "true" } });
         const surface = element.createDiv({ cls: "karpathy-entry-surface" });
         const meta = surface.createDiv({ cls: "karpathy-entry-meta" });
         const date = new Date(entry.timestamp);
@@ -398,57 +397,15 @@ export class KarpathyView extends ItemView {
         const performRescue = async () => {
           if (rescue.disabled) return;
           rescue.disabled = true;
-          rail.disabled = true;
           try {
             await this.plugin.store.rescue(entry);
             this.query = "";
             this.search.value = "";
             await this.refresh(false);
           } catch (error) { this.plugin.report(error); }
-          finally { rescue.disabled = false; rail.disabled = false; resetSwipe(); }
+          finally { rescue.disabled = false; }
         };
         rescue.addEventListener("click", () => { void performRescue(); });
-        rail.addEventListener("click", () => { void performRescue(); });
-        const reveal = (distance: number) => {
-          element.style.setProperty("--karpathy-swipe", `${distance}px`);
-          element.classList.toggle("karpathy-swiping", distance > 0);
-          element.classList.toggle("karpathy-rescue-ready", distance >= 96);
-          rail.tabIndex = distance > 0 ? 0 : -1;
-          rail.setAttribute("aria-hidden", distance > 0 ? "false" : "true");
-        };
-        const resetSwipe = () => { reveal(0); touch = null; };
-        let touch: { x: number; y: number; dx: number; horizontal: boolean } | null = null;
-        element.addEventListener("touchstart", event => {
-          const target = event.target as Element;
-          if (event.touches.length !== 1 || target.closest("button, a, input, pre, table")) { touch = null; return; }
-          reveal(0);
-          touch = { x: event.touches[0].clientX, y: event.touches[0].clientY, dx: 0, horizontal: false };
-        }, { passive: true });
-        element.addEventListener("touchmove", event => {
-          if (!touch) return;
-          if (event.touches.length !== 1 || window.getSelection()?.toString()) { resetSwipe(); return; }
-          const dx = event.touches[0].clientX - touch.x;
-          const dy = Math.abs(event.touches[0].clientY - touch.y);
-          if (!touch.horizontal) {
-            if (dy > 12 && dy >= Math.abs(dx)) { resetSwipe(); return; }
-            if (dx < 12 || dx <= dy * 1.5) return;
-            touch.horizontal = true;
-          }
-          if (event.cancelable) event.preventDefault();
-          touch.dx = Math.max(0, Math.min(120, dx));
-          reveal(touch.dx);
-        }, { passive: false });
-        element.addEventListener("touchend", event => {
-          if (!touch) return;
-          if (!event.changedTouches.length) { resetSwipe(); return; }
-          const dx = touch.dx;
-          const horizontal = touch.horizontal;
-          touch = null;
-          if (horizontal && dx >= 96 && !window.getSelection()?.toString()) { void performRescue(); }
-          else reveal(horizontal && dx >= 40 ? 88 : 0);
-        }, { passive: true });
-        element.addEventListener("touchcancel", resetSwipe);
-        element.addEventListener("keydown", event => { if (event.key === "Escape") resetSwipe(); });
         const edit = actions.createEl("button", { text: "Edit", attr: { "aria-label": "Edit entry" } });
         edit.empty();
         edit.title = "Edit entry";

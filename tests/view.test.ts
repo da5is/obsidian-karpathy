@@ -10,6 +10,30 @@ import { DEFAULT_SETTINGS, parseSettings, themePrefixColor } from "../src/settin
 
 after(closeDOM);
 
+test("sidebar hiding persists, restores without an on-screen button, and cleans up on disable", async () => {
+  assert.equal(parseSettings({}).hideSidebars, false);
+  assert.equal(parseSettings({ hideSidebars: "true" }).hideSidebars, false);
+  const { plugin } = fixture();
+  let saved: unknown;
+  plugin.saveData = async value => { saved = structuredClone(value); };
+  await plugin.setSidebarsHidden(true);
+  assert.equal(parseSettings(saved).hideSidebars, true);
+  assert.ok(document.body.classList.contains("karpathy-hide-sidebars"));
+  plugin.applySidebarHiding();
+  assert.equal(document.querySelectorAll(".karpathy-show-sidebars").length, 0);
+  await plugin.setSidebarsHidden(false);
+  await until(() => !document.body.classList.contains("karpathy-hide-sidebars"));
+  assert.equal(parseSettings(saved).hideSidebars, false);
+  assert.equal(document.querySelector(".karpathy-show-sidebars"), null);
+  await plugin.setSidebarsHidden(true);
+  plugin["clearSidebarHiding"]();
+  assert.equal(document.querySelector(".karpathy-show-sidebars"), null);
+  assert.equal(document.body.classList.contains("karpathy-hide-sidebars"), false);
+  plugin.saveData = async () => { throw new Error("disk failure"); };
+  await assert.rejects(() => plugin.setSidebarsHidden(false), /disk failure/);
+  assert.equal(plugin.settings.hideSidebars, true);
+});
+
 test("root settings persist and root vault events refresh the stream", async () => {
   assert.equal(parseSettings({}).baseFolder, "Karpathy");
   for (const baseFolder of ["", "/"]) {
@@ -76,36 +100,19 @@ test("only configured prefixes are highlighted and editor and stream use theme v
   await view.onClose();
 });
 
-test("vertical scrolling does not rescue; a short swipe reveals a large action and a full swipe rescues", async () => {
+test("touch gestures leave entries unchanged and do not intercept scrolling", async () => {
   const { plugin, view } = fixture();
-  await plugin.store.capture("swipe check", new Date(2026, 0, 1), "swipe-entry");
+  await plugin.store.capture("touch check", new Date(2026, 0, 1), "touch-entry");
   await view.onOpen();
-  const row = view.contentEl.querySelector<HTMLElement>('[data-entry-id="swipe-entry"]')!;
-  const content = row.querySelector<HTMLElement>(".karpathy-entry-content")!;
-  const touch = (type: string, x: number, y: number) => {
+  const row = view.contentEl.querySelector('[data-entry-id="touch-entry"]')!;
+  for (const type of ["touchstart", "touchmove", "touchend"]) {
     const event = new Event(type, { bubbles: true, cancelable: true });
-    Object.defineProperties(event, { touches: { value: type === "touchend" ? [] : [{ clientX: x, clientY: y }] }, changedTouches: { value: [{ clientX: x, clientY: y }] } });
-    content.dispatchEvent(event);
-    return event;
-  };
-  touch("touchstart", 0, 0);
-  assert.equal(touch("touchmove", 15, 80).defaultPrevented, false);
-  touch("touchend", 15, 80);
-  assert.ok(!row.classList.contains("karpathy-swiping"));
+    Object.defineProperties(event, { touches: { value: [{ clientX: 120, clientY: 4 }] }, changedTouches: { value: [{ clientX: 120, clientY: 4 }] } });
+    row.dispatchEvent(event);
+    assert.equal(event.defaultPrevented, false);
+  }
+  assert.equal(row.querySelector(".karpathy-rescue-rail"), null);
   assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].rescues, undefined);
-  touch("touchstart", 0, 0);
-  assert.equal(touch("touchmove", 55, 3).defaultPrevented, true);
-  touch("touchend", 55, 3);
-  assert.equal(row.style.getPropertyValue("--karpathy-swipe"), "88px");
-  assert.equal(row.querySelector(".karpathy-rescue-rail")?.getAttribute("aria-hidden"), "false");
-  touch("touchstart", 0, 0);
-  touch("touchmove", 110, 4);
-  assert.ok(row.classList.contains("karpathy-rescue-ready"));
-  touch("touchend", 110, 4);
-  await until(() => !!view.contentEl.querySelector(".karpathy-rescue-meta")?.textContent?.includes("rescued 1 time"));
-  const history = view.contentEl.querySelector(".karpathy-rescue-meta")!.textContent!;
-  assert.match(history, /rescued just now.*written.*rescued 1 time/);
-  assert.equal(view.contentEl.querySelectorAll('[data-entry-id="swipe-entry"]').length, 1);
   await view.onClose();
 });
 

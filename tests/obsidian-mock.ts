@@ -123,6 +123,7 @@ export class App {
       this.workspace.opened.push({ linktext, sourcePath, newLeaf });
     },
     getLeavesOfType: () => [],
+    iterateAllLeaves: (_callback: (leaf: any) => void) => {},
     onLayoutReady: (callback: () => void) => callback(),
     getLeaf: () => { throw new Error("Not implemented by test workspace"); }
   };

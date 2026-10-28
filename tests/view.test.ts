@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { EditorView } from "@codemirror/view";
-import { App, closeDOM, Platform } from "./obsidian-mock";
+import { App, closeDOM, Menu, Platform } from "./obsidian-mock";
 import { shell } from "./electron-mock";
 import KarpathyPlugin from "../src/main";
 import { Store } from "../src/store";
@@ -159,6 +159,65 @@ test("rescue button moves the original into the newest stream position", async (
   await until(() => view.contentEl.querySelector<HTMLElement>(".karpathy-entry")?.dataset.entryId === "old-entry");
   assert.equal(view.contentEl.querySelectorAll('[data-entry-id="old-entry"]').length, 1);
   assert.ok(view.contentEl.querySelector(".karpathy-rescue-meta"));
+  await view.onClose();
+});
+
+test("entry menu confirms deletion, supports cancel and refreshes the stream and count", async () => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("keep this", new Date(2026, 9, 25), "keep-entry");
+  await plugin.store.capture("delete this", new Date(2026, 9, 25, 1), "delete-entry");
+  await view.onOpen();
+  const more = view.contentEl.querySelector<HTMLButtonElement>('[data-entry-id="delete-entry"] [aria-label="More entry actions"]')!;
+  more.click();
+  assert.deepEqual(Menu.shown.items.map(item => item.title), ["Open daily Markdown note", "Delete entry"]);
+  const action = Menu.shown.items.find(item => item.title === "Delete entry")!;
+  assert.equal(action.warning, true);
+  action.click();
+  let modal = document.querySelector<HTMLElement>(".karpathy-delete-modal")!;
+  assert.equal(modal.querySelector(".karpathy-delete-preview")!.textContent, "delete this");
+  const cancel = modal.querySelector<HTMLButtonElement>("button:not(.mod-warning)")!;
+  assert.equal(document.activeElement, cancel);
+  assert.equal(await plugin.store.countEntries(), 2);
+  cancel.click();
+  assert.equal(document.querySelector(".karpathy-delete-modal"), null);
+  assert.equal(await plugin.store.countEntries(), 2);
+  more.click();
+  Menu.shown.items.find(item => item.title === "Delete entry")!.click();
+  modal = document.querySelector<HTMLElement>(".karpathy-delete-modal")!;
+  const remove = modal.querySelector<HTMLButtonElement>(".mod-warning")!;
+  const errors: unknown[] = [];
+  plugin.report = error => { errors.push(error); };
+  remove.click();
+  remove.click();
+  assert.equal(remove.disabled, true);
+  await until(() => !view.contentEl.querySelector('[data-entry-id="delete-entry"]') && view.contentEl.textContent!.includes("1 note captured"));
+  assert.ok(view.contentEl.querySelector('[data-entry-id="keep-entry"]'));
+  assert.equal(document.querySelector(".karpathy-delete-modal"), null);
+  assert.deepEqual(errors, []);
+  await view.onClose();
+});
+
+test("failed menu deletion keeps the entry and allows retry", async () => {
+  const { app, plugin, view } = fixture();
+  await plugin.store.capture("keep until saved", new Date(2026, 9, 25), "retry-delete");
+  const errors: unknown[] = [];
+  plugin.report = error => { errors.push(error); };
+  await view.onOpen();
+  view.contentEl.querySelector<HTMLButtonElement>('[aria-label="More entry actions"]')!.click();
+  Menu.shown.items.find(item => item.title === "Delete entry")!.click();
+  const modal = document.querySelector<HTMLElement>(".karpathy-delete-modal")!;
+  const remove = modal.querySelector<HTMLButtonElement>(".mod-warning")!;
+  app.vault.failWrites = true;
+  remove.click();
+  await until(() => !remove.disabled);
+  assert.equal(errors.length, 1);
+  assert.match(modal.querySelector('[role="alert"]')!.textContent!, /Could not delete/);
+  assert.equal(await plugin.store.countEntries(), 1);
+  assert.ok(view.contentEl.querySelector('[data-entry-id="retry-delete"]'));
+  app.vault.failWrites = false;
+  remove.click();
+  await until(() => !view.contentEl.querySelector('[data-entry-id="retry-delete"]') && view.contentEl.textContent!.includes("0 notes captured"));
+  assert.equal(document.querySelector(".karpathy-delete-modal"), null);
   await view.onClose();
 });
 

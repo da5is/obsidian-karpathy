@@ -214,6 +214,8 @@
 .karpathy-edit-modal .karpathy-editor .cm-content { min-height: 180px; }
 .karpathy-edit-modal .karpathy-capture-status { margin-block: 12px; }
 .karpathy-discard { margin-top: 16px; color: var(--text-muted); }
+.karpathy-delete-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
+.karpathy-delete-modal .modal-button-container button { min-height: 44px; }
 .karpathy-hidden-folder { display: none !important; }
 
 body.karpathy-hide-sidebars :is(.workspace-split.mod-left-split, .workspace-split.mod-right-split, .workspace-ribbon.mod-left, .workspace-drawer.mod-left, .workspace-drawer.mod-right, .sidebar-toggle-button) {

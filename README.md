@@ -16,6 +16,7 @@ Inspired by Andrej Karpathy's [append-and-review note](https://karpathy.bearblog
 - Write Markdown. Save with **Ctrl/Cmd+Enter**, three Enter presses, or **Save**. Two Enter presses keep a paragraph break.
 - Paste images and files, or use the file and photo buttons beside Save.
 - Search from the header. Use **Rescue** to move an entry to the top; **Edit** changes it in place.
+- Choose **Delete entry** from an entry's **…** menu and confirm to remove it. Other entries and attachments are kept.
 - Start with `todo:`, `read:`, `buy:`, or `ref:` for theme-colored prefixes. New prefixes join the settings list when first saved.
 - Enable **Hide sidebars** in settings to hide both sidebars and the left ribbon. Restore them with **Karpathy: Toggle hidden sidebars** in the command palette or turn off the setting. This applies throughout the vault and is removed when the plugin is disabled.
 

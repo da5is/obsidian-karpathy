@@ -127,6 +127,69 @@ function fixture() {
   return { app, store: new Store(app, "Karpathy") };
 }
 
+test("deleting one entry preserves its neighbors, daily note and attachments and invalidates search/counts", async () => {
+  const { app, store } = fixture();
+  const date = new Date(2026, 9, 25);
+  const link = await store.attachment(new File(["photo"], "keep.png", { type: "image/png" }), date);
+  await store.capture(`remove this\n\n${link}`, date, "delete-me");
+  await store.capture("keep this", date, "keep-me");
+  const file = store.files[0];
+  await app.vault.process(file, text => `---\ntitle: Daily notes\n---\n\n${text}`);
+  assert.equal(await store.countEntries(), 2);
+  const entry = (await store.page({ file: 0, offset: 0 }, 1, "remove this")).entries[0];
+  const before = await app.vault.read(file);
+  const attachments = [...app.vault.binaries.keys()];
+  await store.remove(entry);
+  assert.equal(await app.vault.read(file), before.slice(0, entry.start) + before.slice(entry.end));
+  assert.equal(await store.countEntries(), 1);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "remove this")).entries.length, 0);
+  const remaining = (await store.entries(file))[0];
+  assert.equal(remaining.id, "keep-me");
+  await store.remove(remaining);
+  assert.equal(await store.countEntries(), 0);
+  assert.ok(app.vault.getAbstractFileByPath(file.path));
+  assert.match(await app.vault.read(file), /^---\ntitle: Daily notes\n---/);
+  assert.deepEqual([...app.vault.binaries.keys()], attachments);
+});
+
+test("deletion rejects stale entries and failed writes without losing current content", async () => {
+  const { app, store } = fixture();
+  await store.capture("original", new Date(2026, 9, 25), "delete-stale");
+  const file = store.files[0];
+  const entry = (await store.entries(file))[0];
+  await store.update(entry, "changed on another device");
+  const before = await app.vault.read(file);
+  await assert.rejects(() => store.remove(entry), /changed elsewhere/);
+  const current = (await store.entries(file))[0];
+  app.vault.failWrites = true;
+  await assert.rejects(() => store.remove(current), /Disk full/);
+  assert.equal(await app.vault.read(file), before);
+  assert.equal(await store.countEntries(), 1);
+  app.vault.failWrites = false;
+  await store.remove(current);
+  assert.equal(await store.countEntries(), 0);
+});
+
+test("deleting a rescued entry completes pending recovery so it cannot reappear", async () => {
+  const { app, store } = fixture();
+  await store.capture("move then delete", new Date(2026, 8, 30), "delete-recovered");
+  const source = (await store.entries(store.files[0]))[0];
+  const process = app.vault.process.bind(app.vault);
+  app.vault.process = async (file, work) => {
+    if (file.path === source.path) throw new Error("Interrupted source removal");
+    return process(file, work);
+  };
+  await assert.rejects(() => store.rescue(source, new Date(2026, 9, 25)), /Interrupted/);
+  app.vault.process = process;
+  const moved = (await store.page({ file: 0, offset: 0 }, 1, "")).entries[0];
+  assert.notEqual(moved.path, source.path);
+  await store.remove(moved);
+  assert.equal(app.loadLocalStorage("karpathy:rescue:Karpathy"), null);
+  const reopened = new Store(app, "Karpathy");
+  await reopened.recoverRescue();
+  assert.equal(await reopened.countEntries(), 0);
+});
+
 test("concurrent captures never overwrite one another and retries are idempotent", async () => {
   const { app, store } = fixture();
   const date = new Date(2026, 9, 25, 12);

@@ -167,12 +167,22 @@ export class Modal extends Component {
 export class PluginSettingTab {}
 export function setIcon(element: HTMLElement, icon: string) { element.dataset.icon = icon; }
 export class Menu {
+  static shown: Menu;
+  items: { title: string; icon: string; warning: boolean; click: () => void }[] = [];
   addItem(callback: (item: any) => void) {
-    const item = { setTitle() { return item; }, setIcon() { return item; }, onClick() { return item; } };
+    const value = { title: "", icon: "", warning: false, click: () => {} };
+    const item = {
+      setTitle(title: string) { value.title = title; return item; },
+      setIcon(icon: string) { value.icon = icon; return item; },
+      setWarning(warning: boolean) { value.warning = warning; return item; },
+      onClick(click: () => void) { value.click = click; return item; }
+    };
     callback(item);
+    this.items.push(value);
     return this;
   }
-  showAtMouseEvent() {}
+  addSeparator() { return this; }
+  showAtMouseEvent() { Menu.shown = this; }
 }
 export class Setting {}
 export class Notice {

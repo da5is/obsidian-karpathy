@@ -426,6 +426,12 @@ export class KarpathyView extends ItemView {
             await leaf.openFile(file, { eState: { line: text.slice(0, current.start).split("\n").length - 1 } });
           })().catch(error => this.plugin.report(error));
           }));
+          menu.addSeparator();
+          menu.addItem(item => item.setTitle("Delete entry").setIcon("trash-2").setWarning(true).onClick(() => {
+            new ConfirmDelete(this.plugin, entry, () => {
+              void this.refresh(true).catch(error => this.plugin.report(error));
+            }).open();
+          }));
           menu.showAtMouseEvent(event);
         });
         const content = surface.createDiv({ cls: "karpathy-entry-content markdown-rendered" });
@@ -585,6 +591,42 @@ class EntryEditor extends Modal {
     if (this.closed) return;
     this.closed = true;
     void (this.editor?.destroy() ?? Promise.resolve()).then(() => { this.plugin.editing--; }).catch(error => this.plugin.report(error));
+  }
+}
+
+class ConfirmDelete extends Modal {
+  constructor(private plugin: KarpathyPlugin, private entry: Entry, private deleted: () => void) { super(plugin.app); }
+  onOpen(): void {
+    this.modalEl.addClass("karpathy-delete-modal");
+    this.titleEl.setText("Delete entry?");
+    this.contentEl.createEl("p", { text: "This removes the entry from its daily Markdown note. Other entries and attachments will be kept." });
+    this.contentEl.createEl("blockquote", {
+      cls: "karpathy-delete-preview",
+      text: this.entry.body.length > 280 ? `${this.entry.body.slice(0, 280)}…` : this.entry.body
+    });
+    const status = this.contentEl.createDiv({ attr: { role: "alert" } });
+    const actions = this.contentEl.createDiv({ cls: "modal-button-container" });
+    const cancel = actions.createEl("button", { text: "Cancel" });
+    cancel.addEventListener("click", () => this.close());
+    const remove = actions.createEl("button", { text: "Delete entry", cls: "mod-warning" });
+    let saving = false;
+    remove.addEventListener("click", () => {
+      if (saving) return;
+      saving = true;
+      remove.disabled = true;
+      status.setText("");
+      void this.plugin.store.remove(this.entry).then(() => {
+        this.close();
+        this.plugin.changed();
+        this.deleted();
+      }).catch(error => {
+        status.setText("Could not delete the entry. It may have changed; reopen it from the stream and try again.");
+        this.plugin.report(error);
+        saving = false;
+        remove.disabled = false;
+      });
+    });
+    cancel.focus();
   }
 }
 

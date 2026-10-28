@@ -184,6 +184,14 @@ export class Store {
 
   private get rescueKey(): string { return `karpathy:rescue:${this.base}`; }
 
+  async remove(entry: Entry): Promise<void> {
+    await this.serial("rescue", async () => {
+      // Finish any interrupted move before deleting, so recovery cannot restore it.
+      await this.recoverRescue();
+      await this.update(entry, null);
+    });
+  }
+
   async rescue(entry: Entry, date = new Date()): Promise<void> {
     await this.serial("rescue", async () => {
       await this.recoverRescue();

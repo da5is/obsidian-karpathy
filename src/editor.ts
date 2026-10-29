@@ -9,6 +9,7 @@ import { tags } from "@lezer/highlight";
 import { entryPrefix, uniqueId } from "./model";
 import { livePreview } from "./preview";
 import { nativeClipboardFiles } from "./clipboard";
+import { urlPaste } from "./url-paste";
 import type { Scope, KeymapEventHandler } from "obsidian";
 
 export interface EditorOptions {
@@ -141,6 +142,7 @@ export class CaptureEditor {
               return true;
             }
           }),
+          urlPaste(),
           Prec.highest(keymap.of([
             { key: "Ctrl-Enter", run: () => { options.save(); return true; } },
             { key: "Meta-Enter", run: () => { options.save(); return true; } },

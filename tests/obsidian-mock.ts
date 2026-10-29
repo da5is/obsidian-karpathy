@@ -36,6 +36,14 @@ export class TFile extends TAbstractFile { extension = "md"; basename = ""; stat
 export class TFolder extends TAbstractFile { children: TAbstractFile[] = []; }
 
 export const Platform = { isDesktopApp: true };
+export const urlRequests = {
+  calls: [] as { url: string; headers?: Record<string, string>; throw?: boolean }[],
+  respond: async (_url: string): Promise<{ status: number; headers: Record<string, string>; text: string }> => ({ status: 404, headers: {}, text: "" })
+};
+export function requestUrl(request: { url: string; headers?: Record<string, string>; throw?: boolean }) {
+  urlRequests.calls.push(request);
+  return urlRequests.respond(request.url);
+}
 export class FileSystemAdapter {
   getFullPath(path: string) { return `C:\\vault\\${path.replace(/\//g, "\\")}`; }
 }

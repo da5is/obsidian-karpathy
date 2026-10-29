@@ -4,13 +4,15 @@ import { acceptCompletion, autocompletion, closeCompletion, CompletionSource, co
 import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewline } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { searchKeymap } from "@codemirror/search";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { insertNewlineContinueMarkupCommand, markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { tags } from "@lezer/highlight";
 import { entryPrefix, uniqueId } from "./model";
 import { livePreview } from "./preview";
 import { nativeClipboardFiles } from "./clipboard";
 import { urlPaste } from "./url-paste";
 import type { Scope, KeymapEventHandler } from "obsidian";
+
+const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false });
 
 export interface EditorOptions {
   body: string;
@@ -95,9 +97,9 @@ export class CaptureEditor {
           // Use its keymap, with this fallback for keyboards that send only input.
           EditorView.inputHandler.of((view, from, to, text) => {
             if (text !== "\n" || from !== to || view.composing) return false;
-            if (options.completeLink && acceptCompletion(view)) return true;
-            if (to !== view.state.doc.length) return false;
-            return this.submitOnBlankLine(view);
+            const selection = view.state.selection.main;
+            if (selection.from !== from || selection.to !== to) return false;
+            return this.handleEnter(view);
           }),
           EditorView.domEventHandlers({
             paste: event => {
@@ -147,7 +149,7 @@ export class CaptureEditor {
             { key: "Ctrl-Enter", run: () => { options.save(); return true; } },
             { key: "Meta-Enter", run: () => { options.save(); return true; } },
             { key: "Shift-Enter", run: insertNewline },
-            { key: "Enter", run: view => !view.composing && ((!!options.completeLink && acceptCompletion(view)) || this.submitOnBlankLine(view)) },
+            { key: "Enter", run: view => this.handleEnter(view) },
             ...(options.completeLink ? [{ key: "Tab", run: acceptCompletion }, ...completionKeymap.filter(binding => binding.key !== "Enter")] : []),
             { key: "Mod-b", run: () => this.wrap("**") },
             { key: "Mod-i", run: () => this.wrap("*") },
@@ -179,7 +181,26 @@ export class CaptureEditor {
     }
   }
 
-  private submitOnBlankLine(view: EditorView): boolean {
+  private handleEnter(view: EditorView): boolean {
+    if (view.composing || view.state.readOnly) return false;
+    if (this.options.completeLink && acceptCompletion(view)) return true;
+    const selection = view.state.selection.main;
+    const line = view.state.doc.lineAt(selection.head);
+    const emptyItem = selection.empty && view.state.selection.ranges.length === 1 &&
+      /^[ \t]*(?:[-+*]|\d+[.)])(?:[ \t]+\[[ xX]\])?[ \t]*$/.test(line.text);
+    if (continueMarkup({ state: view.state, dispatch: transaction => {
+      const next = transaction.state;
+      const cursor = next.selection.main.head;
+      const cleared = next.doc.lineAt(cursor);
+      if (emptyItem && !cleared.text.trim()) {
+        // Leave a blank paragraph after exiting the outermost list. This also
+        // keeps continue / exit / save as three Enter presses in the composer.
+        view.dispatch([transaction, next.update({
+          changes: { from: cleared.from, to: cleared.to, insert: "\n" },
+          selection: { anchor: cleared.from + 1 }, userEvent: "input", scrollIntoView: true
+        })]);
+      } else view.dispatch(transaction);
+    } })) return true;
     if (!this.canSubmit(view)) return false;
     this.options.save();
     return true;

@@ -74,3 +74,34 @@ test("iOS deferred Return selects a wikilink without a stray newline or saving t
     assert.equal(editor.body, "[[Reference]] then keep typing");
   } finally { await editor.destroy(); host.remove(); }
 });
+
+test("iOS deferred Return continues a bullet, exits it, then saves with an empty next input", async () => {
+  const { CaptureEditor } = await import("../src/editor");
+  const host = document.body.createDiv();
+  const saved: string[] = [];
+  const editor = new CaptureEditor(host, {
+    body: "- mobile list", colors: {}, tripleEnter: true, change: () => {},
+    save: () => { saved.push(editor.body.trimEnd()); editor.setBody(""); editor.focus(); },
+    upload: async () => [], error: error => { throw error; }, busy: () => {}
+  });
+  const nativeReturn = async () => {
+    editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+    const event = new Event("beforeinput", { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
+    editor.view.contentDOM.dispatchEvent(event);
+    await wait(150);
+  };
+  try {
+    editor.view.dispatch({ selection: { anchor: editor.body.length } });
+    editor.focus();
+    await nativeReturn();
+    assert.equal(editor.body, "- mobile list\n- ");
+    await nativeReturn();
+    assert.equal(editor.body, "- mobile list\n\n");
+    assert.equal(saved.length, 0);
+    await nativeReturn();
+    assert.deepEqual(saved, ["- mobile list"]);
+    assert.equal(editor.body, "");
+    assert.equal(editor.view.state.selection.main.head, 0);
+  } finally { await editor.destroy(); host.remove(); }
+});

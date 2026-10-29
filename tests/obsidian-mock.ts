@@ -40,6 +40,10 @@ export class FileSystemAdapter {
   getFullPath(path: string) { return `C:\\vault\\${path.replace(/\//g, "\\")}`; }
 }
 export function getLinkpath(linktext: string) { return linktext.split("#")[0]; }
+export function parseFrontMatterAliases(frontmatter?: Record<string, unknown>) {
+  const aliases = frontmatter?.aliases;
+  return typeof aliases === "string" ? [aliases] : Array.isArray(aliases) ? aliases.filter((alias): alias is string => typeof alias === "string") : null;
+}
 
 export class Scope {
   handlers: { modifiers: string[]; key: string; callback: (event: KeyboardEvent) => unknown }[] = [];
@@ -70,6 +74,8 @@ export class MemoryVault {
   clock = 1;
   locks = new Map<string, Promise<unknown>>();
   failWrites = false;
+  listings = 0;
+  getFiles() { this.listings++; return [...this.files.values()].filter((file): file is TFile => file instanceof TFile); }
   getMarkdownFiles() { return [...this.files.values()].filter((file): file is TFile => file instanceof TFile && file.extension === "md"); }
   getAbstractFileByPath(path: string) { return this.files.get(path) ?? null; }
   private linkToParent(file: TAbstractFile) {
@@ -87,6 +93,8 @@ export class MemoryVault {
     if (this.failWrites) throw new Error("Disk full");
     if (this.files.has(path)) throw new Error("Already exists");
     const file = Object.assign(new TFile(), { path, name: path.split("/").pop(), stat: { mtime: ++this.clock, ctime: this.clock, size: text.length } });
+    file.extension = file.name.split(".").pop() ?? "";
+    file.basename = file.name.slice(0, -(file.extension.length + 1));
     this.files.set(path, file);
     this.linkToParent(file);
     this.texts.set(path, text);
@@ -117,6 +125,9 @@ export class App {
   scope = new Scope();
   vault = new MemoryVault();
   local = new Map<string, unknown>();
+  fileCaches = new Map<string, { frontmatter?: Record<string, unknown> }>();
+  cacheReads = 0;
+  linkRequests: { path: string; source: string }[] = [];
   workspace = {
     opened: [] as { linktext: string; sourcePath: string; newLeaf: string }[],
     openLinkText: async (linktext: string, sourcePath: string, newLeaf: string) => {
@@ -128,6 +139,13 @@ export class App {
     getLeaf: () => { throw new Error("Not implemented by test workspace"); }
   };
   metadataCache = {
+    getFileCache: (file: TFile) => { this.cacheReads++; return this.fileCaches.get(file.path) ?? null; },
+    fileToLinktext: (file: TFile, source: string, omitMdExtension: boolean) => {
+      this.linkRequests.push({ path: file.path, source });
+      const unique = this.vault.getFiles().filter(candidate => candidate.name === file.name).length === 1;
+      const link = unique ? file.name : file.path;
+      return file.extension === "md" && omitMdExtension ? link.slice(0, -3) : link;
+    },
     getFirstLinkpathDest: (path: string, source: string) => {
       return this.vault.getAbstractFileByPath(path) ??
         this.vault.getAbstractFileByPath(`${source.slice(0, source.lastIndexOf("/") + 1)}${path}`);

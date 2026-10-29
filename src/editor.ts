@@ -1,5 +1,6 @@
 import { Compartment, EditorSelection, EditorState, Prec } from "@codemirror/state";
-import { Decoration, DecorationSet, EditorView, keymap, placeholder, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { Decoration, DecorationSet, EditorView, keymap, placeholder, tooltips, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { acceptCompletion, autocompletion, closeCompletion, CompletionSource, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewline } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { searchKeymap } from "@codemirror/search";
@@ -21,6 +22,7 @@ export interface EditorOptions {
   busy: (busy: boolean) => void;
   scope?: Scope;
   resolveImage?: (link: string) => string | null;
+  completeLink?: CompletionSource;
 }
 
 export class CaptureEditor {
@@ -54,6 +56,23 @@ export class CaptureEditor {
         doc: options.body,
         extensions: [
           history(), EditorView.lineWrapping, bracketMatching(),
+          options.completeLink ? [
+            autocompletion({
+              override: [options.completeLink], defaultKeymap: false, icons: false,
+              activateOnTypingDelay: 50, interactionDelay: 0, maxRenderedOptions: 20,
+              tooltipClass: () => "karpathy-link-suggestions",
+              compareCompletions: (a, b) => (a.displayLabel ?? a.label).localeCompare(b.displayLabel ?? b.label) || (a.detail ?? "").localeCompare(b.detail ?? "")
+            }),
+            tooltips({
+              parent: parent.ownerDocument.body,
+              tooltipSpace: () => {
+                const win = parent.ownerDocument.defaultView!;
+                const viewport = win.visualViewport;
+                const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
+                return { left, top, right: left + (viewport?.width ?? win.innerWidth), bottom: top + (viewport?.height ?? win.innerHeight) };
+              }
+            })
+          ] : [],
           markdown({ base: markdownLanguage, addKeymap: false }),
           syntaxHighlighting(defaultHighlightStyle),
           syntaxHighlighting(HighlightStyle.define([
@@ -74,7 +93,9 @@ export class CaptureEditor {
           // beforeinput races that replay and inserts a newline into the next draft.
           // Use its keymap, with this fallback for keyboards that send only input.
           EditorView.inputHandler.of((view, from, to, text) => {
-            if (text !== "\n" || from !== to || to !== view.state.doc.length) return false;
+            if (text !== "\n" || from !== to || view.composing) return false;
+            if (options.completeLink && acceptCompletion(view)) return true;
+            if (to !== view.state.doc.length) return false;
             return this.submitOnBlankLine(view);
           }),
           EditorView.domEventHandlers({
@@ -124,7 +145,8 @@ export class CaptureEditor {
             { key: "Ctrl-Enter", run: () => { options.save(); return true; } },
             { key: "Meta-Enter", run: () => { options.save(); return true; } },
             { key: "Shift-Enter", run: insertNewline },
-            { key: "Enter", run: view => this.submitOnBlankLine(view) },
+            { key: "Enter", run: view => !view.composing && ((!!options.completeLink && acceptCompletion(view)) || this.submitOnBlankLine(view)) },
+            ...(options.completeLink ? [{ key: "Tab", run: acceptCompletion }, ...completionKeymap.filter(binding => binding.key !== "Enter")] : []),
             { key: "Mod-b", run: () => this.wrap("**") },
             { key: "Mod-i", run: () => this.wrap("*") },
             { key: "Mod-k", run: () => this.wrap("[", "](url)") }
@@ -139,6 +161,16 @@ export class CaptureEditor {
         event.preventDefault();
         event.stopPropagation();
         options.save();
+        return false;
+      });
+      if (handler) this.hotkeys.push(handler);
+    }
+    if (options.completeLink) {
+      // Dismiss suggestions before Obsidian's modal-level Escape handler.
+      const handler = options.scope?.register([], "Escape", event => {
+        if (!this.view.hasFocus || event.isComposing || !closeCompletion(this.view)) return;
+        event.preventDefault();
+        event.stopPropagation();
         return false;
       });
       if (handler) this.hotkeys.push(handler);
@@ -167,10 +199,12 @@ export class CaptureEditor {
     if (!this.destroyed) this.view.dispatch({});
   }
   lock(value: boolean): void {
+    if (value && !this.destroyed && this.options.completeLink) closeCompletion(this.view);
     if (!this.destroyed) this.view.dispatch({ effects: this.readOnly.reconfigure(EditorState.readOnly.of(value)) });
   }
   setBody(body: string): void {
     if (this.destroyed) return;
+    if (this.options.completeLink) closeCompletion(this.view);
     this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: body }, selection: { anchor: 0 } });
   }
   insert(text: string): void {

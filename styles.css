@@ -218,6 +218,23 @@
 .karpathy-delete-modal .modal-button-container button { min-height: 44px; }
 .karpathy-hidden-folder { display: none !important; }
 
+.cm-tooltip.karpathy-link-suggestions {
+  z-index: var(--layer-popover, 1000);
+  max-width: min(480px, calc(100vw - 24px));
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-s);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-medium);
+}
+.cm-tooltip.karpathy-link-suggestions > ul { max-height: min(280px, 40vh); }
+.cm-tooltip.karpathy-link-suggestions > ul > li { min-height: 44px; padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; }
+.cm-tooltip.karpathy-link-suggestions > ul > li[aria-selected] { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cm-tooltip.karpathy-link-suggestions .cm-completionLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-grow: 0; }
+.cm-tooltip.karpathy-link-suggestions .cm-completionDetail { display: block; margin: 2px 0 0; color: var(--text-muted); font-style: normal; font-size: var(--font-ui-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 body.karpathy-hide-sidebars :is(.workspace-split.mod-left-split, .workspace-split.mod-right-split, .workspace-ribbon.mod-left, .workspace-drawer.mod-left, .workspace-drawer.mod-right, .sidebar-toggle-button) {
   display: none !important;
 }

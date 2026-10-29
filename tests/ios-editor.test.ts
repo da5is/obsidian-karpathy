@@ -43,3 +43,34 @@ test("iOS deferred Return cannot insert a newline into the next draft", async ()
     assert.equal(editor.body, "Next note");
   } finally { await view.onClose(); }
 });
+
+test("iOS deferred Return selects a wikilink without a stray newline or saving the entry", async () => {
+  const { CaptureEditor } = await import("../src/editor");
+  const { WikilinkIndex } = await import("../src/links");
+  const { completionStatus } = await import("@codemirror/autocomplete");
+  const app = new App();
+  await app.vault.create("Reference.md", "");
+  const host = document.body.createDiv();
+  let saves = 0;
+  const editor = new CaptureEditor(host, {
+    body: "", colors: {}, tripleEnter: true, change: () => {}, save: () => { saves++; },
+    upload: async () => [], error: error => { throw error; }, busy: () => {},
+    completeLink: new WikilinkIndex(app).source(() => "day.md")
+  });
+  try {
+    editor.focus();
+    editor.view.dispatch({ changes: { from: 0, insert: "[[Ref" }, selection: { anchor: 5 }, userEvent: "input.type" });
+    for (let i = 0; i < 100 && completionStatus(editor.view.state) !== "active"; i++) await wait(10);
+    assert.equal(completionStatus(editor.view.state), "active");
+    editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+    const event = new Event("beforeinput", { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
+    editor.view.contentDOM.dispatchEvent(event);
+    await wait(150);
+    assert.equal(editor.body, "[[Reference]]");
+    assert.equal(saves, 0);
+    assert.equal(editor.view.state.selection.main.head, editor.body.length);
+    editor.insert(" then keep typing");
+    assert.equal(editor.body, "[[Reference]] then keep typing");
+  } finally { await editor.destroy(); host.remove(); }
+});

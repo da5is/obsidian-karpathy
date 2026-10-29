@@ -2,6 +2,7 @@ import { FileSystemAdapter, getLinkpath, Notice, Platform, Plugin, TAbstractFile
 import { baseFolder, Entry, entryPrefix } from "./model";
 import { DEFAULT_SETTINGS, KarpathySettingsTab, parseSettings, Settings, themePrefixColor } from "./settings";
 import { Store } from "./store";
+import { WikilinkIndex } from "./links";
 import { KarpathyView, VIEW_TYPE } from "./view";
 
 export interface Draft { body: string; timestamp: string; id: string; original?: Entry }
@@ -9,6 +10,7 @@ export interface Draft { body: string; timestamp: string; id: string; original?:
 export default class KarpathyPlugin extends Plugin {
   settings: Settings = { ...DEFAULT_SETTINGS };
   store!: Store;
+  readonly links = new WikilinkIndex(this.app);
   private hiddenStyle?: HTMLStyleElement;
   private folderObserver?: MutationObserver;
   private hideFrame?: number;
@@ -47,6 +49,7 @@ export default class KarpathyPlugin extends Plugin {
       void this.store.recoverRescue().then(() => this.changed()).catch(error => this.report(error));
     } });
     this.registerEvent(this.app.vault.on("create", file => this.fileChanged(file)));
+    this.registerEvent(this.app.metadataCache.on("changed", file => this.links.changed(file)));
     this.registerEvent(this.app.vault.on("modify", file => this.fileChanged(file)));
     this.registerEvent(this.app.vault.on("delete", file => this.fileChanged(file)));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
@@ -65,6 +68,7 @@ export default class KarpathyPlugin extends Plugin {
       this.unhide();
       this.hiddenStyle?.remove();
       this.store.clear();
+      this.links.clear();
     });
   }
 
@@ -104,6 +108,7 @@ export default class KarpathyPlugin extends Plugin {
   }
 
   private fileChanged(file: TAbstractFile, oldPath?: string): void {
+    this.links.changed(file, oldPath);
     const base = this.settings.baseFolder;
     const relevant = (path: string) => !base || path === base || path.startsWith(`${base}/`) || base.startsWith(`${path}/`);
     if (!relevant(file.path) && (!oldPath || !relevant(oldPath))) return;

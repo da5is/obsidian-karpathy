@@ -15,6 +15,7 @@ Inspired by Andrej Karpathy's [append-and-review note](https://karpathy.bearblog
 - Open **Karpathy: Open stream** from the command palette.
 - Write Markdown. Save with **Ctrl/Cmd+Enter**, three Enter presses, or **Save**. Two Enter presses keep a paragraph break.
 - Paste images and files, or use the file and photo buttons beside Save.
+- Type `[[` in capture or Edit to suggest existing files and aliases from anywhere in the vault. Filter by typing, select with arrows and Enter/Tab or tap a result, and press Escape to dismiss. Folder paths distinguish duplicate names. Heading and block suggestions are not included yet.
 - Search from the header. Use **Rescue** to move an entry to the top; **Edit** changes it in place.
 - Choose **Delete entry** from an entry's **…** menu and confirm to remove it. Other entries and attachments are kept.
 - Start with `todo:`, `read:`, `buy:`, or `ref:` for theme-colored prefixes. New prefixes join the settings list when first saved.

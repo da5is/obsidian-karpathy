@@ -176,6 +176,7 @@ export class KarpathyView extends ItemView {
       body: this.draft?.body ?? "",
       colors: this.plugin.settings.prefixColors,
       tripleEnter: true,
+      completeLink: this.plugin.links.source(() => dailyPath(base, new Date(this.draft?.timestamp ?? Date.now()))),
       resolveImage: link => this.plugin.imageSource(link, dailyPath(base, new Date(this.draft?.timestamp ?? Date.now()))),
       change: body => {
         if (body.trim()) {
@@ -532,6 +533,7 @@ class EntryEditor extends Modal {
     this.button.addEventListener("click", () => { void this.save(); });
     this.editor = new CaptureEditor(host, {
       body: this.draft.body, colors: this.plugin.settings.prefixColors, tripleEnter: false,
+      completeLink: this.plugin.links.source(() => this.entry.path),
       resolveImage: link => this.plugin.imageSource(link, this.entry.path),
       change: body => {
         this.draft.body = body;

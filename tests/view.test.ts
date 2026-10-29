@@ -11,6 +11,19 @@ import { DEFAULT_SETTINGS, parseSettings, themePrefixColor } from "../src/settin
 
 after(closeDOM);
 
+test("entry footers share yesterday and month-first dates for writing and rescue history", async context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 29, 16) });
+  const { plugin, view } = fixture();
+  await plugin.store.capture("Older note", new Date(2026, 9, 27, 10), "date-rescue");
+  await plugin.store.rescue((await plugin.store.entries(plugin.store.files[0]))[0], new Date(2026, 9, 28, 11));
+  await plugin.store.capture("Yesterday's note", new Date(2026, 9, 28, 10), "date-written");
+  await view.onOpen();
+  try {
+    const labels = [...view.contentEl.querySelectorAll(".karpathy-rescue-meta")].map(element => element.textContent);
+    assert.deepEqual(labels, ["↑ rescued yesterday · written Oct 27th · rescued 1 time", "written yesterday"]);
+  } finally { await view.onClose(); }
+});
+
 test("sidebar hiding persists, restores without an on-screen button, and cleans up on disable", async () => {
   assert.equal(parseSettings({}).hideSidebars, false);
   assert.equal(parseSettings({ hideSidebars: "true" }).hideSidebars, false);

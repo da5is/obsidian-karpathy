@@ -1,6 +1,6 @@
 import { Component, ItemView, MarkdownRenderer, Menu, Modal, Notice, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { CaptureEditor, editorToolbar } from "./editor";
-import { displayDate } from "./dates";
+import { displayDate, relativeDate } from "./dates";
 import type KarpathyPlugin from "./main";
 import type { Draft } from "./main";
 import { Cursor, dailyPath, Entry, entryPrefix, parseEntries, taskRanges, toggleTask, uniqueId } from "./model";
@@ -11,17 +11,10 @@ interface Row { element: HTMLElement; component: Component; signature: string }
 interface Anchor { id: string; top: number }
 function entryKey(entry: Entry): string { return `${entry.path}#${entry.id}`; }
 
-function age(timestamp: string): string {
-  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 60000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
-  return displayDate(new Date(timestamp), { compact: true });
-}
-
 function rescueHistory(entry: Entry): string {
   const count = entry.rescues ?? 0;
-  return count ? `↑ rescued ${age(entry.timestamp)} · written ${age(entry.created ?? entry.timestamp)} · rescued ${count} ${count === 1 ? "time" : "times"}` : `written ${age(entry.timestamp)}`;
+  const now = new Date();
+  return count ? `↑ rescued ${relativeDate(entry.timestamp, now)} · written ${relativeDate(entry.created ?? entry.timestamp, now)} · rescued ${count} ${count === 1 ? "time" : "times"}` : `written ${relativeDate(entry.timestamp, now)}`;
 }
 
 export class KarpathyView extends ItemView {

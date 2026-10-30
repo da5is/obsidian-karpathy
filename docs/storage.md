@@ -74,3 +74,14 @@ and backups remain the sync tool's responsibility.
 
 Drafts are device-local. Cached search text is also stored locally and is removed
 when the corresponding deletion is processed, or when the index is rebuilt.
+
+## Verification and unavailable files (2.0.1)
+
+Warm cached results remain available immediately. A background content check starts
+after one minute and repeats fifteen minutes after each full check completes.
+It rereads eight files at a time with pauses between batches, detecting changes
+that preserved size and modification time while the plugin was closed. Results
+may be stale until verification finishes; Refresh stream and cache forces a rebuild.
+Unreadable files are excluded from results and reported beside the count. They
+are retried on the next one-minute maintenance tick or a relevant file event.
+Maintenance stops when the plugin closes; no entry files are changed by verification.

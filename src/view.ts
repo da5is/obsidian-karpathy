@@ -263,6 +263,7 @@ export class KarpathyView extends ItemView {
     this.loading = true;
     this.updateDateHeading();
     this.subtitle.setText("Counting notes…");
+    try {
     const cursor = first ? await this.plugin.store.cursorFor(first) : { file: 0, offset: 0 };
     if (generation !== this.generation || this.closed) return;
     this.before = { ...cursor };
@@ -275,8 +276,14 @@ export class KarpathyView extends ItemView {
     if (generation === this.generation && !this.closed) {
       void this.plugin.store.countEntries(() => generation === this.generation && !this.closed).then(count => {
         if (count !== null && generation === this.generation && !this.closed)
-          this.subtitle.setText(`${count.toLocaleString()} ${count === 1 ? "note" : "notes"} captured`);
+          this.subtitle.setText(`${count.toLocaleString()} ${count === 1 ? "note" : "notes"} captured${this.plugin.store.failures.size ? ` · ${this.plugin.store.failures.size} unavailable; retrying automatically` : ""}`);
       }).catch(error => this.plugin.report(error));
+    }
+    } catch (error) {
+      if (generation === this.generation && !this.closed) this.progress.setText("Could not refresh. Use Refresh stream and cache to retry.");
+      throw error;
+    } finally {
+      if (generation === this.generation && !this.closed) { this.loading = false; this.controls(); }
     }
   }
 
@@ -367,7 +374,7 @@ export class KarpathyView extends ItemView {
     for (const entry of this.items) {
       if (!valid()) return;
       const key = entryKey(entry);
-      const signature = `${entry.path}\n${entry.timestamp}\n${entry.created}\n${entry.rescues}\n${entry.conflict}\n${entry.body}\n${JSON.stringify(this.plugin.settings.prefixColors)}`;
+      const signature = `${entry.source}\n${entry.path}\n${entry.timestamp}\n${entry.created}\n${entry.rescues}\n${entry.conflict}\n${entry.body}\n${JSON.stringify(this.plugin.settings.prefixColors)}`;
       let row = this.rows.get(key);
       if (row && row.signature !== signature) {
         row.element.remove();

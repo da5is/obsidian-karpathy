@@ -19,12 +19,45 @@ export class Store {
   private rebuilding?: Promise<void>;
   private index: LocalIndex;
   private closed = false;
+  readonly failures = new Map<string, number>();
+  private verification?: Promise<void>;
+  private verificationTimer?: ReturnType<typeof setTimeout>;
+  onReconciled?: () => void;
+  private lastVerification = 0;
+
+  // Re-read authoritative files in small batches, including same-stat changes.
+  reconcile(all = true): Promise<void> {
+    if (this.verification) return this.verification;
+    this.verification = (async () => {
+      await this.initial;
+      const files = [...this.candidates.values()].filter(file => all || this.failures.has(file.path));
+      for (let i = 0; i < files.length && !this.closed; i += 8) {
+        await Promise.all(files.slice(i, i + 8).map(file => {
+          this.cache.delete(file.path);
+          return this.entries(file);
+        }));
+        if (i + 8 < files.length) await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      if (all) this.lastVerification = Date.now();
+      if (!this.closed && files.length) this.onReconciled?.();
+    })().finally(() => { this.verification = undefined; });
+    return this.verification;
+  }
+  private scheduleVerification(): void {
+    if (this.closed) return;
+    this.verificationTimer = setTimeout(() => {
+      void this.reconcile(Date.now() - this.lastVerification >= 15 * 60000).catch(error => console.warn("[karpathy] Verification failed", error))
+        .finally(() => this.scheduleVerification());
+    }, 60000);
+    (this.verificationTimer as unknown as { unref?: () => void }).unref?.();
+  }
   private indexedBase: string;
   constructor(private app: App, public base: string) {
     this.indexedBase = base;
     this.index = new LocalIndex(app);
     this.reindex();
     this.initial = this.restore();
+    this.scheduleVerification();
   }
 
   private async restore(): Promise<void> {
@@ -61,6 +94,7 @@ export class Store {
   }
   invalidate(path: string): void {
     if (!this.candidates.has(path) && !this.records.has(path) && !isEntryPath(this.base, path)) return;
+    this.failures.delete(path);
     this.epochs.set(path, (this.epochs.get(path) ?? 0) + 1);
     this.cache.delete(path); this.searchCache.delete(path);
     const file = this.app.vault.getAbstractFileByPath(path);
@@ -81,7 +115,7 @@ export class Store {
     this.orderDirty = true;
     void this.index.clear();
   }
-  async close(): Promise<void> { this.closed = true; await this.initial; await this.rebuilding; await this.index.close(); }
+  async close(): Promise<void> { this.closed = true; clearTimeout(this.verificationTimer); await this.initial; await this.rebuilding; await this.verification; await this.index.close(); }
 
   get files(): TFile[] {
     if (this.orderDirty) {
@@ -132,8 +166,11 @@ export class Store {
     const entry = entries[0];
     const record: IndexRecord = { path: file.path, mtime, size, id: entry?.id ?? "", timestamp: entry?.timestamp ?? "" };
     const search = entry ? [entry.body, entry.created, entry.timestamp, file.path].join("\n").toLocaleLowerCase() : "";
+    const previous = this.records.get(file.path);
+    if (!previous || previous.id !== record.id || previous.timestamp !== record.timestamp) this.orderDirty = true;
     this.records.set(file.path, record);
-    this.dirty.delete(file.path); this.orderDirty = true;
+    this.failures.delete(file.path);
+    this.dirty.delete(file.path);
     this.cache.set(file.path, { mtime, size, entries }, text.length * 4 + 256);
     this.searchCache.set(file.path, search, search.length * 2 + 128);
     await this.index.put(record, search);
@@ -145,7 +182,18 @@ export class Store {
     if (!this.dirty.has(file.path) && cached && cached.mtime === file.stat.mtime && cached.size === file.stat.size) return cached.entries;
     const epoch = this.epochs.get(file.path) ?? 0;
     const { mtime, size } = file.stat;
-    return this.remember(file, await this.app.vault.read(file), epoch, mtime, size);
+    try { return await this.remember(file, await this.app.vault.read(file), epoch, mtime, size); }
+    catch {
+      if ((this.epochs.get(file.path) ?? 0) === epoch) {
+        this.failures.set(file.path, Date.now());
+        this.dirty.delete(file.path);
+        this.records.delete(file.path);
+        this.cache.delete(file.path); this.searchCache.delete(file.path);
+        this.orderDirty = true;
+        await this.index.remove(file.path);
+      }
+      return [];
+    }
   }
   private async searchTexts(files: TFile[]): Promise<Map<string, string>> {
     const result = new Map<string, string>();

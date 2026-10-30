@@ -23,6 +23,7 @@ export default class KarpathyPlugin extends Plugin {
     // Invalid persisted paths must not quietly redirect writes to another folder.
     this.settings = parseSettings(await this.loadData());
     this.store = new Store(this.app, this.settings.baseFolder);
+    this.store.onReconciled = () => this.changed();
     this.registerView(VIEW_TYPE, leaf => new KarpathyView(leaf, this));
     this.addSettingTab(new KarpathySettingsTab(this.app, this));
     this.addCommand({ id: "toggle-sidebars", name: "Toggle hidden sidebars", callback: () => {

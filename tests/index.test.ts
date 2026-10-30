@@ -43,7 +43,8 @@ test("an interrupted index build can retry; a concurrent change cannot persist a
   const store = new Store(app as any, "Karpathy");
   const originalRead = app.vault.read.bind(app.vault);
   app.vault.read = async () => { throw new Error("Temporary read failure"); };
-  await assert.rejects(() => store.countEntries(), /Temporary read failure/);
+  assert.equal(await store.countEntries(), 0);
+  assert.equal(store.failures.size, 1);
   let changed = false;
   app.vault.read = async current => {
     const stale = await originalRead(current);
@@ -54,6 +55,7 @@ test("an interrupted index build can retry; a concurrent change cannot persist a
     }
     return stale;
   };
+  await store.reconcile();
   assert.equal(await store.countEntries(), 1);
   assert.equal((await store.entries(file))[0].body, "latest version");
   await store.close();
@@ -76,5 +78,40 @@ test("conflicting entry identities are shown separately and explicitly marked", 
   const remaining = (await store.page({ file: 0, offset: 0 }, 1, "")).entries;
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].conflict, false);
+  await store.close();
+});
+
+test("unavailable files do not block healthy entries and reconciliation restores them", async () => {
+  const app = new App(), store = new Store(app as any, "Karpathy");
+  await store.capture("healthy", new Date(), "good");
+  await store.capture("unavailable", new Date(), "bad");
+  const bad = store.files.find(file => file.path.endsWith("-bad.md"))!;
+  const read = app.vault.read.bind(app.vault);
+  app.vault.read = file => file === bad ? Promise.reject(new Error("offline")) : read(file);
+  store.invalidate(bad.path);
+  assert.equal(await store.countEntries(), 1);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "healthy")).entries.length, 1);
+  assert.equal(store.failures.size, 1);
+  app.vault.read = read;
+  await store.reconcile(false);
+  assert.equal(await store.countEntries(), 2);
+  assert.equal(store.failures.size, 0);
+  await store.close();
+});
+
+test("warm page reads retain ordering and reconciliation repairs offline same-stat search", async () => {
+  const app = new App(), first = new Store(app as any, "Karpathy");
+  for (let i = 0; i < 70; i++) await first.capture("oldtoken", new Date(2026, 9, 30, 0, 0, i), `entry-${i}`);
+  const file = first.files[0];
+  await first.close();
+  app.vault.texts.set(file.path, app.vault.texts.get(file.path)!.replace("oldtoken", "newtoken"));
+  const store = new Store(app as any, "Karpathy");
+  await store.countEntries();
+  const ordering = store.files;
+  await store.page({ file: 30, offset: 0 }, 1, "");
+  assert.equal(store.files, ordering);
+  await store.reconcile();
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "newtoken")).entries.length, 1);
+  assert.equal(store.files, ordering);
   await store.close();
 });

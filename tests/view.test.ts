@@ -567,3 +567,36 @@ test("interrupted upload placeholders are removed when a text draft is restored"
   plugin.writeDraft(key, { body: "keep text\n<!-- uploading:test-id -->\n", timestamp: new Date().toISOString(), id: "draft" });
   assert.equal(plugin.readDraft(key)!.body, "keep text\n\n");
 });
+
+test("metadata-only refresh replaces stale actions", async () => {
+  const { app, plugin, view } = fixture();
+  const errors: unknown[] = [];
+  plugin.report = error => errors.push(error);
+  await plugin.store.capture("metadata check", new Date(), "metadata-entry");
+  await view.onOpen();
+  const file = plugin.store.files[0];
+  await app.vault.process(file, text => text.replace("karpathy: 2", "custom: preserved\nkarpathy: 2"));
+  plugin.store.invalidate(file.path);
+  await view.refresh(true);
+  view.contentEl.querySelector<HTMLButtonElement>('[aria-label="Rescue entry to the top"]')!.click();
+  await until(() => view.contentEl.textContent!.includes("rescued 1 time"));
+  assert.deepEqual(errors, []);
+  assert.match(await app.vault.read(file), /custom: preserved/);
+  await view.onClose(); await plugin.store.close();
+});
+
+test("cursor failure releases loading and subsequent refresh succeeds", async () => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("anchor", new Date(), "anchor");
+  await view.onOpen();
+  view["scroller"].scrollTop = 100;
+  const cursor = plugin.store.cursorFor.bind(plugin.store);
+  plugin.store.cursorFor = async () => { throw new Error("transient failure"); };
+  await assert.rejects(view.refresh(true), /transient failure/);
+  assert.equal(view["loading"], false);
+  plugin.store.cursorFor = cursor;
+  await view.refresh(true);
+  assert.equal(view["loading"], false);
+  assert.ok(view.contentEl.textContent!.includes("anchor"));
+  await view.onClose(); await plugin.store.close();
+});

@@ -24,16 +24,20 @@ Inspired by Andrej Karpathy's [append-and-review note](https://karpathy.bearblog
 - Start with `todo:`, `read:`, `buy:`, or `ref:` for theme-colored prefixes. New prefixes join the settings list when first saved.
 - Enable **Hide sidebars** in settings to hide both sidebars and the left ribbon. Restore them with **Karpathy: Toggle hidden sidebars** in the command palette or turn off the setting. This applies throughout the vault and is removed when the plugin is disabled.
 
-Notes stay in your vault as daily Markdown files:
+Each entry is a separate Markdown file in its creation month:
 
 ```text
-Karpathy/2026/2026-10/2026-10-25.md
+Karpathy/2026/2026-10/2026-10-25-091530123-a1b2c3d4e5f6.md
 Karpathy/2026/2026-10/attachments/
 ```
 
-The base folder is configurable. Leave **Base notes folder** blank (or enter `/`) and click **Apply** to use the vault root: `2026/2026-10/2026-10-25.md`, with attachments in `2026/2026-10/attachments/`. Changing the folder does not move existing files or import arbitrary Markdown notes into the stream.
+The base folder is configurable. Leave **Base notes folder** blank (or enter `/`) and click **Apply** to use the vault root: `2026/2026-10/2026-10-25-091530123-a1b2c3d4e5f6.md`, with attachments in `2026/2026-10/attachments/`. Changing the folder does not move existing files or import arbitrary Markdown notes into the stream.
 
-Entries use HTML comments for boundaries and metadata. Rescue moves the original into today's file while retaining its creation time and existing attachment links. Incremental loading and bounded caches keep the stream from rendering your entire history at once.
+Entries use standard YAML properties (`karpathy`, `id`, `created`, `rescued`, `rescues`) followed by ordinary Markdown. Rescue updates the same file without moving it, preserving links and its creation date. Delete moves only that entry file to trash; attachments are retained. Attachment filenames include a random suffix to avoid cross-device collisions.
+
+A rebuildable IndexedDB index stays on each device, outside the synced vault. It stores ordering and search data; entry files remain authoritative. Paging and memory caches stay bounded. Use **Refresh stream and cache** to rebuild the index. Conflicting copies with the same entry ID are shown separately and marked for review. Editing the same entry on two devices still depends on your sync tool's conflict policy.
+
+**Version 2 uses a new storage format.** There is no automatic conversion: existing version 1 daily files remain untouched and are not displayed. Start with a clean capture folder, keep a backup of any old notes you need, and update every device before using version 2. Do not downgrade after creating version 2 entries. See [storage details](docs/storage.md).
 
 ## Install with BRAT
 

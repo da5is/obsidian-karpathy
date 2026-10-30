@@ -1,3 +1,4 @@
+import { parseYaml, stringifyYaml } from "obsidian";
 export interface Entry {
   id: string;
   timestamp: string;
@@ -7,6 +8,8 @@ export interface Entry {
   end: number;
   created?: string;
   rescues?: number;
+  source?: string;
+  conflict?: boolean;
 }
 
 export interface Cursor {
@@ -27,13 +30,10 @@ export function entryPrefix(text: string): RegExpExecArray | null {
   return /^([a-z][\w-]*):/i.exec(text);
 }
 
-let lastIdTime = 0;
-let idSequence = 0;
 export function uniqueId(): string {
-  const time = Math.max(Date.now(), lastIdTime);
-  idSequence = time === lastIdTime ? idSequence + 1 : 0;
-  lastIdTime = time;
-  return new Date(time).toISOString().replace(/[^0-9]/g, "") + (idSequence ? `-${idSequence}` : "");
+  // Independent devices must not rely on a shared counter or synchronized clock.
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(6)), byte => byte.toString(16).padStart(2, "0")).join("");
+  return new Date().toISOString().replace(/[^0-9]/g, "") + `-${suffix}`;
 }
 
 export function baseFolder(value: string): string {
@@ -50,75 +50,82 @@ export function localDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function dailyPath(base: string, date: Date): string {
+export function entryPath(base: string, date: Date, id: string): string {
+  if (!/^[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid entry identity.");
   const day = localDay(date);
   const folder = baseFolder(base);
-  return `${folder ? `${folder}/` : ""}${day.slice(0, 4)}/${day.slice(0, 7)}/${day}.md`;
+  const time = [date.getHours(), date.getMinutes(), date.getSeconds()].map(value => String(value).padStart(2, "0")).join("") + String(date.getMilliseconds()).padStart(3, "0");
+  const name = /^\d{17}-[a-f0-9]{12}$/.test(id) ? `${time}-${id.slice(-12)}` : id;
+  return `${folder ? `${folder}/` : ""}${day.slice(0, 4)}/${day.slice(0, 7)}/${day}-${name}.md`;
 }
 
 export function attachmentFolder(base: string, date: Date): string {
-  const path = dailyPath(base, date);
+  const path = entryPath(base, date, "attachment");
   return `${path.slice(0, path.lastIndexOf("/") + 1)}attachments`;
 }
 
-export function isDailyPath(base: string, path: string): boolean {
+export function isEntryPath(base: string, path: string): boolean {
   const folder = baseFolder(base);
   const prefix = folder ? `${folder}/` : "";
   if (!path.startsWith(prefix)) return false;
-  const match = /^(\d{4})\/(\d{4}-\d{2})\/(\d{4}-\d{2}-\d{2})\.md$/.exec(path.slice(prefix.length));
+  // Accept renamed/conflict copies within the month too; metadata establishes
+  // identity. Old daily files and attachments are not entry files.
+  const match = /^(\d{4})\/(\d{4}-\d{2})\/(\d{4}-\d{2}-\d{2})-[^/]+\.md$/.exec(path.slice(prefix.length));
   if (!match || match[1] !== match[3].slice(0, 4) || match[2] !== match[3].slice(0, 7)) return false;
   const parsed = new Date(`${match[3]}T12:00:00`);
   return !Number.isNaN(parsed.valueOf()) && localDay(parsed) === match[3];
 }
 
-export function serializeEntry(id: string, timestamp: string, body: string, created?: string, rescues = 0): string {
-  if (!/^[a-zA-Z0-9-]+$/.test(id) || Number.isNaN(Date.parse(timestamp))) throw new Error("Invalid entry identity.");
-  if (/^<!-- (?:\/)?karpathy:/m.test(body)) throw new Error("Entry boundary markers cannot appear at the start of a line.");
-  const date = new Date(timestamp);
-  const time = date.toLocaleTimeString("en-GB", { hour12: false });
-  const metadata = created ? ` created=${created} rescues=${rescues}` : "";
-  return `<!-- karpathy:${id} ${timestamp}${metadata} -->\n## ${time}\n\n${normalizeBody(body)}\n\n<!-- /karpathy:${id} -->`;
+export function serializeEntry(id: string, timestamp: string, body: string, created = timestamp, rescues = 0, properties: Record<string, unknown> = {}): string {
+  if (!/^[a-zA-Z0-9-]+$/.test(id) || !validDate(timestamp) || !validDate(created) || !Number.isSafeInteger(rescues) || rescues < 0) {
+    throw new Error("Invalid entry metadata.");
+  }
+  const metadata = { ...properties, karpathy: 2, id, created, rescued: rescues ? timestamp : null, rescues };
+  return "---\n" + stringifyYaml(metadata).trimEnd() + "\n---\n\n" + normalizeBody(body) + "\n";
 }
 
+function validDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+}
 function normalizeBody(body: string): string {
   return body.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
 }
+function frontmatter(text: string): { properties: Record<string, unknown>; end: number } | null {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  if (!match) return null;
+  try {
+    const properties: unknown = parseYaml(match[1]);
+    if (!properties || typeof properties !== "object" || Array.isArray(properties)) return null;
+    return { properties: properties as Record<string, unknown>, end: match[0].length };
+  } catch { return null; }
+}
 
+// A single standard Markdown document is the complete source of truth.
 export function parseEntries(text: string, path: string): Entry[] {
-  const entries: Entry[] = [];
-  const opening = /^<!-- karpathy:([a-zA-Z0-9-]+) (\S+)(?: created=(\S+) rescues=(\d+))? -->\r?\n## [^\r\n]+\r?\n\r?\n/gm;
-  let match: RegExpExecArray | null;
-  while ((match = opening.exec(text))) {
-    const closing = new RegExp(`^<!-- /karpathy:${match[1]} -->\\r?$`, "gm");
-    closing.lastIndex = opening.lastIndex;
-    const end = closing.exec(text);
-    if (!end || Number.isNaN(Date.parse(match[2]))) continue;
-    entries.push({
-      id: match[1], timestamp: match[2], path,
-      body: normalizeBody(text.slice(opening.lastIndex, end.index)),
-      start: match.index, end: end.index + end[0].length,
-      created: match[3], rescues: match[4] ? Number(match[4]) : undefined
-    });
-    opening.lastIndex = end.index + end[0].length;
-  }
-  return entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.id.localeCompare(a.id));
+  const header = frontmatter(text);
+  if (!header) return [];
+  const { karpathy, id, created, rescued, rescues } = header.properties;
+  if (karpathy !== 2 || typeof id !== "string" || !/^[a-zA-Z0-9-]+$/.test(id) || !validDate(created) ||
+      typeof rescues !== "number" || !Number.isSafeInteger(rescues) || rescues < 0 ||
+      (rescues > 0 ? !validDate(rescued) : rescued !== null && rescued !== undefined)) return [];
+  return [{ id, timestamp: rescues ? new Date(rescued as string).toISOString() : new Date(created).toISOString(),
+    created: new Date(created).toISOString(), rescues, path, body: normalizeBody(text.slice(header.end)),
+    start: header.end, end: text.length, source: text }];
 }
 
-export function insertEntry(text: string, serialized: string, day: string): string {
-  if (!text) return `# ${day}\n\n${serialized}\n`;
-  const header = /^(?:---\r?\n[\s\S]*?\r?\n---\r?\n(?:\r?\n)?)?(?:# \d{4}-\d{2}-\d{2}\r?\n(?:\r?\n)?)?/.exec(text)?.[0] ?? "";
-  return `${header}${header && !header.endsWith("\n\n") ? "\n" : ""}${serialized}\n\n${text.slice(header.length)}`;
-}
-
-export function replaceEntry(text: string, expected: Entry, body: string | null): string {
-  const matches = parseEntries(text, expected.path).filter(entry => entry.id === expected.id);
-  if (matches.length !== 1) throw new Error("This entry was removed or has a duplicate ID. Reopen it before editing.");
-  const current = matches[0];
-  if (current.body !== expected.body || current.timestamp !== expected.timestamp) {
+export function validateEntry(text: string, expected: Entry): Entry {
+  const current = parseEntries(text, expected.path)[0];
+  if (!current || current.id !== expected.id) throw new Error("This entry was removed or its identity changed. Reopen it before editing.");
+  if (expected.source !== undefined ? text !== expected.source :
+      current.body !== expected.body || current.timestamp !== expected.timestamp || current.rescues !== expected.rescues) {
     throw new Error("This entry changed elsewhere. Your draft is kept; reopen the latest entry before saving.");
   }
-  const replacement = body === null ? "" : serializeEntry(current.id, current.timestamp, body, current.created, current.rescues);
-  return text.slice(0, current.start) + replacement + text.slice(current.end);
+  return current;
+}
+export function replaceEntry(text: string, expected: Entry, body: string, rescuedAt?: string): string {
+  const current = validateEntry(text, expected);
+  return serializeEntry(current.id, rescuedAt ?? current.timestamp, body, current.created,
+    (current.rescues ?? 0) + (rescuedAt ? 1 : 0), frontmatter(text)!.properties);
 }
 
 export function matchesQuery(entry: Entry, query: string): boolean {

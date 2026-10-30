@@ -23,7 +23,6 @@ export default class KarpathyPlugin extends Plugin {
     // Invalid persisted paths must not quietly redirect writes to another folder.
     this.settings = parseSettings(await this.loadData());
     this.store = new Store(this.app, this.settings.baseFolder);
-    await this.store.recoverRescue().catch(error => this.report(error));
     this.registerView(VIEW_TYPE, leaf => new KarpathyView(leaf, this));
     this.addSettingTab(new KarpathySettingsTab(this.app, this));
     this.addCommand({ id: "toggle-sidebars", name: "Toggle hidden sidebars", callback: () => {
@@ -43,10 +42,8 @@ export default class KarpathyPlugin extends Plugin {
     } });
     this.addCommand({ id: "refresh", name: "Refresh stream and cache", callback: () => {
       this.store.clear();
+      this.store.reindex();
       this.changed();
-    } });
-    this.addCommand({ id: "recover-rescue", name: "Retry interrupted rescue", callback: () => {
-      void this.store.recoverRescue().then(() => this.changed()).catch(error => this.report(error));
     } });
     this.registerEvent(this.app.vault.on("create", file => this.fileChanged(file)));
     this.registerEvent(this.app.metadataCache.on("changed", file => this.links.changed(file)));
@@ -67,7 +64,7 @@ export default class KarpathyPlugin extends Plugin {
       this.folderObserver?.disconnect();
       this.unhide();
       this.hiddenStyle?.remove();
-      this.store.clear();
+      void this.store.close();
       this.links.clear();
     });
   }
@@ -113,20 +110,19 @@ export default class KarpathyPlugin extends Plugin {
     const relevant = (path: string) => !base || path === base || path.startsWith(`${base}/`) || base.startsWith(`${path}/`);
     if (!relevant(file.path) && (!oldPath || !relevant(oldPath))) return;
     this.store.invalidate(file.path);
+    if (!(file instanceof TFile)) this.store.reindex();
     if (!(file instanceof TFile) || file.extension === "md" || oldPath?.endsWith(".md")) this.changed();
   }
 
   changed(): void {
     window.clearTimeout(this.refreshTimer);
     this.refreshTimer = window.setTimeout(() => {
-      this.store.reindex();
       for (const view of this.views()) void view.refresh(true).catch(error => this.report(error));
     }, 180);
   }
 
   async changeBase(value: string): Promise<void> {
     const folder = baseFolder(value);
-    await this.store.recoverRescue();
     if (this.views().some(view => view.hasDraft) || this.editing) {
       throw new Error("Save or clear the current draft and close entry editors before changing the base folder.");
     }

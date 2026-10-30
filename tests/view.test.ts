@@ -126,7 +126,7 @@ test("touch gestures leave entries unchanged and do not intercept scrolling", as
     assert.equal(event.defaultPrevented, false);
   }
   assert.equal(row.querySelector(".karpathy-rescue-rail"), null);
-  assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].rescues, undefined);
+  assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].rescues, 0);
   await view.onClose();
 });
 
@@ -182,7 +182,7 @@ test("entry menu confirms deletion, supports cancel and refreshes the stream and
   await view.onOpen();
   const more = view.contentEl.querySelector<HTMLButtonElement>('[data-entry-id="delete-entry"] [aria-label="More entry actions"]')!;
   more.click();
-  assert.deepEqual(Menu.shown.items.map(item => item.title), ["Open daily Markdown note", "Delete entry"]);
+  assert.deepEqual(Menu.shown.items.map(item => item.title), ["Open entry Markdown note", "Delete entry"]);
   const action = Menu.shown.items.find(item => item.title === "Delete entry")!;
   assert.equal(action.warning, true);
   action.click();
@@ -367,10 +367,10 @@ test("attachment links launch the desktop default app and surface launch failure
   link.dispatchEvent(event);
   assert.equal(event.defaultPrevented, true);
   await until(() => shell.opened.length === 1);
-  assert.equal(shell.opened[0], "C:\\vault\\Karpathy\\2026\\2026-10\\attachments\\my report.pdf");
+  assert.equal(shell.opened[0], app.vault.adapter.getFullPath(link.dataset.href!));
   assert.equal(app.workspace.opened.length, 0);
   shell.error = "No associated application";
-  await assert.rejects(() => plugin.openStreamLink("Karpathy/2026/2026-10/attachments/my report.pdf", plugin.store.files[0].path), /No associated application/);
+  await assert.rejects(() => plugin.openStreamLink(link.dataset.href!, plugin.store.files[0].path), /No associated application/);
   shell.error = "";
   await view.onClose();
 });

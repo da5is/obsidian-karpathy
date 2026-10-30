@@ -1,94 +1,65 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachmentFolder, baseFolder, dailyPath, insertEntry, isDailyPath, LruCache, matchesQuery, parseEntries, replaceEntry, serializeEntry, toggleTask, uniqueId } from "../src/model";
+import { attachmentFolder, baseFolder, entryPath, isEntryPath, LruCache, matchesQuery, parseEntries, replaceEntry, serializeEntry, toggleTask, uniqueId } from "../src/model";
 
 const timestamp = "2026-10-25T12:00:00.000Z";
-const path = "Karpathy/2026/2026-10/2026-10-25.md";
-const sample = (id = "test-1", body = "todo: first\n\n- [ ] check\n\n---\n\n```md\n## not an entry\n```", time = timestamp) => serializeEntry(id, time, body);
+const path = "Karpathy/2026/2026-10/2026-10-25-test-1.md";
+const sample = (id = "test-1", body = "todo: first\n\n- [ ] check\n\n---\n\n\x60\x60\x60md\n## not an entry\n\x60\x60\x60", time = timestamp) => serializeEntry(id, time, body);
 
-test("new identifiers are readable timestamps and unique for rapid captures", () => {
-  const ids = Array.from({ length: 100 }, () => uniqueId());
-  assert.equal(new Set(ids).size, 100);
-  assert.ok(ids.every(id => /^\d{17}(?:-\d+)?$/.test(id)));
-  const old = "37ebddf4-608a-4c30-8c22-58ba844f5c21";
-  assert.equal(parseEntries(sample(old), path)[0].id, old);
+test("identifiers include readable timestamps and independent random suffixes", context => {
+  context.mock.timers.enable({ apis: ["Date"], now: Date.parse(timestamp) });
+  const ids = Array.from({ length: 1000 }, () => uniqueId());
+  assert.equal(new Set(ids).size, 1000);
+  assert.ok(ids.every(id => /^20261025120000000-[a-f0-9]{12}$/.test(id)));
 });
-test("local daily and attachment layout handles month and year boundaries", () => {
+test("entry and attachment paths retain month folders and support vault root", () => {
   const date = new Date(2026, 0, 1, 0, 1);
-  assert.equal(dailyPath("Notes/Stream", date), "Notes/Stream/2026/2026-01/2026-01-01.md");
+  assert.equal(entryPath("Notes/Stream", date, "example"), "Notes/Stream/2026/2026-01/2026-01-01-example.md");
   assert.equal(attachmentFolder("Notes/Stream", date), "Notes/Stream/2026/2026-01/attachments");
-  assert.equal(dailyPath("Karpathy", new Date(2025, 11, 31, 23, 59)), "Karpathy/2025/2025-12/2025-12-31.md");
-});
-
-test("base path validation prevents hidden and out-of-vault destinations", () => {
-  assert.equal(baseFolder(" Notes\\Stream/ "), "Notes/Stream");
-  for (const value of ["//", "/Notes", "../Notes", "Notes/../Other", ".obsidian", "Notes/.hidden", "C:\\Notes", "a//b", "a?b"]) {
-    assert.throws(() => baseFolder(value));
-  }
-});
-
-test("vault root aliases generate relative paths and recognize only the root daily layout", () => {
   for (const base of ["", "  ", "/", " / "]) {
     assert.equal(baseFolder(base), "");
-    assert.equal(dailyPath(base, new Date(2026, 9, 25)), "2026/2026-10/2026-10-25.md");
-    assert.equal(attachmentFolder(base, new Date(2026, 9, 25)), "2026/2026-10/attachments");
-    assert.equal(isDailyPath(base, "2026/2026-10/2026-10-25.md"), true);
-    assert.equal(isDailyPath(base, path), false);
-    assert.equal(isDailyPath(base, "README.md"), false);
+    const path = entryPath(base, date, "entry");
+    assert.equal(path, "2026/2026-01/2026-01-01-entry.md");
+    assert.equal(isEntryPath(base, path), true);
   }
+  assert.throws(() => entryPath("", date, "../escape"));
 });
-
-test("recognizes only correctly nested daily filenames and real dates", () => {
-  assert.equal(isDailyPath("Karpathy", path), true);
-  for (const value of [
-    "Karpathy/2025/2026-10/2026-10-25.md", "Karpathy/2026/2026-09/2026-10-25.md",
-    "Karpathy/2026/2026-02/2026-02-30.md", "Karpathy/2026/2026-10/attachments/test.md",
-    "Karpathy2/2026/2026-10/2026-10-25.md"
-  ]) assert.equal(isDailyPath("Karpathy", value), false);
+test("base paths and entry recognition exclude unrelated and old daily notes", () => {
+  assert.equal(baseFolder(" Notes\\Stream/ "), "Notes/Stream");
+  for (const value of ["//", "/Notes", "../Notes", "Notes/../Other", ".obsidian", "Notes/.hidden", "C:\\Notes", "a//b", "a?b"]) assert.throws(() => baseFolder(value));
+  assert.equal(isEntryPath("Karpathy", path), true);
+  assert.equal(isEntryPath("Karpathy", path.replace(".md", " (conflict).md")), true);
+  for (const value of ["Karpathy/2026/2026-10/2026-10-25.md", "Karpathy/2025/2026-10/2026-10-25-a.md", "Karpathy/2026/2026-09/2026-10-25-a.md", "Karpathy/2026/2026-02/2026-02-30-a.md", "Karpathy/2026/2026-10/attachments/test.md", "Karpathy2/2026/2026-10/2026-10-25-a.md", "README.md"]) assert.equal(isEntryPath("Karpathy", value), false, value);
 });
-
-test("entries round trip rich Markdown without interpreting content headings or rules", () => {
+test("standard frontmatter round trips rich Markdown without injected headings or boundaries", () => {
   const text = sample();
-  const [entry] = parseEntries(text, path);
-  assert.equal(entry.body, "todo: first\n\n- [ ] check\n\n---\n\n```md\n## not an entry\n```");
-  assert.equal(text.slice(entry.start, entry.end), text);
+  const entry = parseEntries(text, path)[0];
+  assert.ok(text.startsWith("---\nkarpathy: 2\n"));
+  assert.ok(!text.includes("<!-- karpathy:"));
+  assert.equal(entry.body, "todo: first\n\n- [ ] check\n\n---\n\n\x60\x60\x60md\n## not an entry\n\x60\x60\x60");
+  assert.equal(entry.created, timestamp);
+  assert.equal(entry.rescues, 0);
   assert.equal(parseEntries(text.replace(/\n/g, "\r\n"), path)[0].body, entry.body);
   assert.equal(parseEntries(sample("indent", "    code block\nnext  "), path)[0].body, "    code block\nnext  ");
+  assert.equal(parseEntries(sample("comment", "<!-- karpathy:anything -->"), path)[0].body, "<!-- karpathy:anything -->");
 });
-
-test("sorts reverse chronologically with deterministic ties", () => {
-  const entries = parseEntries(`${sample("a")}\n${sample("b", "new", "2026-10-25T13:00:00.000Z")}\n${sample("c")}`, path);
-  assert.deepEqual(entries.map(entry => entry.id), ["b", "c", "a"]);
+test("edits preserve custom properties and refuse stale body or metadata", () => {
+  const text = serializeEntry("test-1", timestamp, "original", timestamp, 0, { tags: ["work"], aliases: ["Example"], custom: { nested: true } });
+  const entry = parseEntries(text, path)[0];
+  const edited = replaceEntry(text, entry, "updated");
+  assert.equal(parseEntries(edited, path)[0].body, "updated");
+  assert.match(edited, /nested: true/);
+  assert.match(edited, /aliases:/);
+  assert.throws(() => replaceEntry(edited, entry, "stale"), /changed elsewhere/);
+  assert.throws(() => replaceEntry(text.replace("work", "home"), entry, "stale"), /changed elsewhere/);
+  const rescued = parseEntries(replaceEntry(text, entry, entry.body, "2026-11-01T12:00:00.000Z"), path)[0];
+  assert.equal(rescued.created, timestamp); assert.equal(rescued.rescues, 1);
+  assert.equal(rescued.timestamp, "2026-11-01T12:00:00.000Z");
 });
-
-test("prepending preserves YAML, daily heading, and unrelated Markdown", () => {
-  const original = "---\ntags: [daily]\n---\n\n# 2026-10-25\n\nExisting content\n";
-  const result = insertEntry(original, sample(), "2026-10-25");
-  assert.ok(result.startsWith("---\ntags: [daily]\n---\n\n# 2026-10-25\n\n<!-- karpathy:"));
-  assert.ok(result.endsWith("Existing content\n"));
-  assert.equal(parseEntries(result, path).length, 1);
-  assert.ok(insertEntry("", sample(), "2026-10-25").startsWith("# 2026-10-25\n\n"));
+test("malformed metadata and legacy documents are excluded without guessing", () => {
+  for (const text of ["plain note", "<!-- karpathy:x timestamp -->", sample().replace("karpathy: 2", "karpathy: 1"), sample().replace("rescues: 0", "rescues: -1"), sample().replace(/created: .*/, "created: invalid"), "---\nkarpathy: [broken\n---\nbody"]) assert.deepEqual(parseEntries(text, path), []);
 });
-
-test("edits touch one entry, preserve surrounding text, and detect stale drafts", () => {
-  const original = `Unmanaged preface\n\n${sample()}\n\n${sample("second", "untouched")}\nFooter`;
-  const entry = parseEntries(original, path).find(entry => entry.id === "test-1")!;
-  const result = replaceEntry(original, entry, "updated");
-  assert.equal(parseEntries(result, path).find(entry => entry.id === "test-1")?.body, "updated");
-  assert.ok(result.startsWith("Unmanaged preface\n\n"));
-  assert.ok(result.endsWith("Footer"));
-  assert.ok(result.includes(sample("second", "untouched")));
-  assert.throws(() => replaceEntry(result, entry, "stale"), /changed elsewhere/);
-  assert.throws(() => replaceEntry(`${original}\n${sample()}`, entry, "duplicate"), /duplicate ID/);
-});
-
-test("invalid timestamps, missing endings, and boundary injection do not become entries", () => {
-  assert.equal(parseEntries("<!-- karpathy:x broken -->\n## time\n\nbody\n\n<!-- /karpathy:x -->", path).length, 0);
-  assert.equal(parseEntries("<!-- karpathy:x 2026-10-25T12:00:00Z -->\n## time\n\nunfinished", path).length, 0);
-  assert.throws(() => sample("x", "hello\n<!-- /karpathy:x -->"), /boundary/);
-});
-
-test("search matches all terms across content, prefixes, and date paths", () => {
+test("search matches body and dates", () => {
   const entry = parseEntries(sample("s", "read: A Great Book"), path)[0];
   assert.equal(matchesQuery(entry, "READ: book 2026-10"), true);
   assert.equal(matchesQuery(entry, "book missing"), false);

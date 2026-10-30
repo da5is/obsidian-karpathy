@@ -3,7 +3,7 @@ import { CaptureEditor, editorToolbar } from "./editor";
 import { displayDate, relativeDate } from "./dates";
 import type KarpathyPlugin from "./main";
 import type { Draft } from "./main";
-import { Cursor, dailyPath, Entry, entryPrefix, parseEntries, taskRanges, toggleTask, uniqueId } from "./model";
+import { Cursor, entryPath, Entry, entryPrefix, parseEntries, taskRanges, toggleTask, uniqueId } from "./model";
 
 export const VIEW_TYPE = "karpathy-stream";
 const WINDOW_SIZE = 120;
@@ -14,7 +14,8 @@ function entryKey(entry: Entry): string { return `${entry.path}#${entry.id}`; }
 function rescueHistory(entry: Entry): string {
   const count = entry.rescues ?? 0;
   const now = new Date();
-  return count ? `↑ rescued ${relativeDate(entry.timestamp, now)} · written ${relativeDate(entry.created ?? entry.timestamp, now)} · rescued ${count} ${count === 1 ? "time" : "times"}` : `written ${relativeDate(entry.timestamp, now)}`;
+  const history = count ? `↑ rescued ${relativeDate(entry.timestamp, now)} · written ${relativeDate(entry.created ?? entry.timestamp, now)} · rescued ${count} ${count === 1 ? "time" : "times"}` : `written ${relativeDate(entry.timestamp, now)}`;
+  return history + (entry.conflict ? " · conflicting copies — review source" : "");
 }
 
 export class KarpathyView extends ItemView {
@@ -169,8 +170,8 @@ export class KarpathyView extends ItemView {
       body: this.draft?.body ?? "",
       colors: this.plugin.settings.prefixColors,
       tripleEnter: true,
-      completeLink: this.plugin.links.source(() => dailyPath(base, new Date(this.draft?.timestamp ?? Date.now()))),
-      resolveImage: link => this.plugin.imageSource(link, dailyPath(base, new Date(this.draft?.timestamp ?? Date.now()))),
+      completeLink: this.plugin.links.source(() => entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
+      resolveImage: link => this.plugin.imageSource(link, entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
       change: body => {
         if (body.trim()) {
           this.draft ??= { id: uniqueId(), timestamp: new Date().toISOString(), body };
@@ -297,7 +298,7 @@ export class KarpathyView extends ItemView {
       let exhausted = false;
       let found: Entry[] = [];
       do {
-        this.progress.setText(this.query ? "Searching daily notes..." : "Loading...");
+        this.progress.setText(this.query ? "Searching entries..." : "Loading...");
         const page = await this.plugin.store.page(cursor, direction, this.query, limit - found.length, valid);
         if (!valid()) return;
         found = direction === 1 ? [...found, ...page.entries] : [...page.entries, ...found];
@@ -366,7 +367,7 @@ export class KarpathyView extends ItemView {
     for (const entry of this.items) {
       if (!valid()) return;
       const key = entryKey(entry);
-      const signature = `${entry.path}\n${entry.timestamp}\n${entry.body}\n${JSON.stringify(this.plugin.settings.prefixColors)}`;
+      const signature = `${entry.path}\n${entry.timestamp}\n${entry.created}\n${entry.rescues}\n${entry.conflict}\n${entry.body}\n${JSON.stringify(this.plugin.settings.prefixColors)}`;
       let row = this.rows.get(key);
       if (row && row.signature !== signature) {
         row.element.remove();
@@ -410,14 +411,14 @@ export class KarpathyView extends ItemView {
         setIcon(source.createSpan({ cls: "karpathy-action-icon" }), "ellipsis");
         source.addEventListener("click", event => {
           const menu = new Menu();
-          menu.addItem(item => item.setTitle("Open daily Markdown note").setIcon("file-text").onClick(() => {
+          menu.addItem(item => item.setTitle("Open entry Markdown note").setIcon("file-text").onClick(() => {
           void (async () => {
             const file = this.app.vault.getAbstractFileByPath(entry.path);
-            if (!(file instanceof TFile)) throw new Error("The daily note no longer exists.");
+            if (!(file instanceof TFile)) throw new Error("The entry note no longer exists.");
             const leaf = this.app.workspace.getLeaf("tab");
             const text = await this.app.vault.read(file);
             const current = parseEntries(text, file.path).find(item => item.id === entry.id);
-            if (!current) throw new Error("This entry no longer exists in the daily note.");
+            if (!current) throw new Error("This entry no longer exists.");
             await leaf.openFile(file, { eState: { line: text.slice(0, current.start).split("\n").length - 1 } });
           })().catch(error => this.plugin.report(error));
           }));
@@ -534,7 +535,7 @@ class EntryEditor extends Modal {
         this.plugin.writeDraft(this.key, this.draft);
       },
       save: () => { void this.save(); },
-      upload: files => Promise.all(files.map(file => this.plugin.store.attachment(file, new Date(this.entry.timestamp), this.base))),
+      upload: files => Promise.all(files.map(file => this.plugin.store.attachment(file, new Date(this.entry.created ?? this.entry.timestamp), this.base))),
       error: error => this.plugin.report(error),
       scope: this.scope,
       busy: busy => {
@@ -549,7 +550,7 @@ class EntryEditor extends Modal {
       new ConfirmDiscard(this.plugin, () => {
         void (async () => {
           const file = this.app.vault.getAbstractFileByPath(this.entry.path);
-          if (!(file instanceof TFile)) throw new Error("The daily note no longer exists.");
+          if (!(file instanceof TFile)) throw new Error("The entry note no longer exists.");
           const current = (await this.plugin.store.entries(file)).find(entry => entry.id === this.entry.id);
           if (!current) throw new Error("This entry no longer exists.");
           this.entry = current;
@@ -595,7 +596,7 @@ class ConfirmDelete extends Modal {
   onOpen(): void {
     this.modalEl.addClass("karpathy-delete-modal");
     this.titleEl.setText("Delete entry?");
-    this.contentEl.createEl("p", { text: "This removes the entry from its daily Markdown note. Other entries and attachments will be kept." });
+    this.contentEl.createEl("p", { text: "This moves the entry's Markdown file to trash. Other entries and attachments will be kept." });
     this.contentEl.createEl("blockquote", {
       cls: "karpathy-delete-preview",
       text: this.entry.body.length > 280 ? `${this.entry.body.slice(0, 280)}…` : this.entry.body

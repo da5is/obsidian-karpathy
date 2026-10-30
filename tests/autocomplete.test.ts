@@ -7,7 +7,7 @@ import KarpathyPlugin from "../src/main";
 import { Store } from "../src/store";
 import { KarpathyView } from "../src/view";
 import { DEFAULT_SETTINGS } from "../src/settings";
-import { dailyPath } from "../src/model";
+import { entryPath } from "../src/model";
 
 after(closeDOM);
 async function until(condition: () => boolean) {
@@ -49,7 +49,7 @@ test("typing [[ offers files; arrows and Enter select without saving, then tripl
     key(editor.view, "Enter");
     assert.equal(editor.body, "See [[Personal/Project Alpha]]");
     assert.equal(plugin.store.files.length, 0);
-    assert.equal(app.linkRequests[0].source, dailyPath("Karpathy", new Date()));
+    assert.equal(app.linkRequests[0].source, entryPath("Karpathy", new Date(stream["draft"]!.timestamp), stream["draft"]!.id));
     key(editor.view, "Enter"); key(editor.view, "Enter"); key(editor.view, "Enter");
     await until(() => editor.body === "" && plugin.store.files.length === 1);
     assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].body, "See [[Personal/Project Alpha]]");
@@ -104,7 +104,7 @@ test("Escape dismisses suggestions while save shortcuts and unmatched links stil
   } finally { await stream.onClose(); }
 });
 
-test("Edit dialog offers links using the original daily file and Escape keeps the dialog open", async () => {
+test("Edit dialog offers links using the original entry file and Escape keeps the dialog open", async () => {
   const { app, plugin, stream } = fixture();
   await app.vault.create("Library/Reference.md", "");
   await plugin.store.capture("Original", new Date(2025, 0, 1), "edit-links");

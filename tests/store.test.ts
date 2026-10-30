@@ -1,326 +1,205 @@
+import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { App, closeDOM, TFile } from "./obsidian-mock";
-import { dailyPath, parseEntries, serializeEntry } from "../src/model";
+import { entryPath, parseEntries, serializeEntry, uniqueId } from "../src/model";
 import { Store } from "../src/store";
 
 after(closeDOM);
-
-test("root storage supports attachments, capture, search, rescue and reopening", async () => {
-  const app = new App();
-  const store = new Store(app, "");
-  const date = new Date(2026, 8, 30, 12);
-  const link = await store.attachment(new File(["image"], "photo.png", { type: "image/png" }), date);
-  assert.equal(link, "![[2026/2026-09/attachments/photo.png]]");
-  await store.capture(`read: root capture\n\n${link}`, date, "root-entry");
-  await app.vault.create("unrelated.md", "Keep this ordinary note");
-  const page = await store.page({ file: 0, offset: 0 }, 1, "root capture");
-  assert.equal(page.entries.length, 1);
-  const entry = page.entries[0];
-  assert.equal(entry.path, "2026/2026-09/2026-09-30.md");
-  await store.rescue(entry, new Date(2026, 9, 25, 12));
-  const reopened = new Store(app, "");
-  assert.equal(await reopened.countEntries(), 1);
-  const moved = (await reopened.page({ file: 0, offset: 0 }, 1, "root capture")).entries[0];
-  assert.equal(moved.path, "2026/2026-10/2026-10-25.md");
-  assert.equal(moved.body, entry.body);
-  assert.equal(moved.rescues, 1);
-  assert.equal(app.vault.texts.get("unrelated.md"), "Keep this ordinary note");
-});
-
-test("header count totals entries, caches counts, and stays unchanged by rescue", async () => {
-  const { app, store } = fixture();
-  await store.capture("first", new Date(2026, 8, 1), "count-1");
-  await store.capture("second", new Date(2026, 8, 1, 1), "count-2");
-  await store.capture("third", new Date(2026, 8, 2), "count-3");
-  assert.equal(await store.countEntries(), 3);
-  const reads = app.vault.reads;
-  assert.equal(await store.countEntries(), 3);
-  assert.equal(app.vault.reads, reads);
-  const entry = (await store.entries(store.files[1]))[0];
-  await store.rescue(entry, new Date(2026, 9, 25));
-  assert.equal(await store.countEntries(), 3);
-  await store.capture("fourth", new Date(2026, 9, 25, 1), "count-4");
-  assert.equal(await store.countEntries(), 4);
-  assert.equal(await store.countEntries(() => false), null);
-});
-
-test("warm full-history searches skip disk reads for nonmatching days and invalidate changed days", async () => {
-  const { app, store } = fixture();
-  for (let day = 1; day <= 40; day++) await store.capture(`ordinary day ${day}`, new Date(2026, 8, day), `search-${day}`);
-  const search = async (query: string) => {
-    let cursor = { file: 0, offset: 0 };
-    const results = [];
-    for (;;) {
-      const page = await store.page(cursor, 1, query);
-      results.push(...page.entries);
-      if (page.exhausted) return results;
-      cursor = page.end;
-    }
-  };
-  await search("missing");
-  const reads = app.vault.reads;
-  assert.equal((await search("another-missing-term")).length, 0);
-  assert.equal(app.vault.reads, reads);
-  const file = store.files.at(-1)!;
-  app.vault.texts.set(file.path, serializeEntry("changed-search", new Date(2026, 8, 1).toISOString(), "another-missing-term"));
-  store.invalidate(file.path);
-  assert.equal((await search("another-missing-term")).length, 1);
-  assert.equal(app.vault.reads, reads + 1);
-});
-
-test("rescue moves between months, retains identity and creation time, and preserves attachment links", async () => {
-  const { app, store } = fixture();
-  const original = new Date(2026, 8, 30, 12);
-  await store.capture("idea: keep\n\n![[Karpathy/2026/2026-09/attachments/image.png]]", original, "rescue-me");
-  const entry = (await store.entries(store.files[0]))[0];
-  const now = new Date(2026, 9, 25, 15);
-  await store.rescue(entry, now);
-  assert.equal(parseEntries(app.vault.texts.get(entry.path)!, entry.path).length, 0);
-  const moved = (await store.page({file: 0, offset: 0}, 1, "")).entries[0];
-  assert.equal(moved.id, entry.id);
-  assert.equal(moved.body, entry.body);
-  assert.equal(moved.created, original.toISOString());
-  assert.equal(moved.timestamp, now.toISOString());
-  assert.equal(moved.rescues, 1);
-  await store.rescue(moved, new Date(2026, 9, 25, 16));
-  const again = (await store.entries(store.files[0]))[0];
-  assert.equal(again.rescues, 2);
-  assert.equal(again.created, original.toISOString());
-  assert.equal((await store.entries(store.files[0])).length, 1);
-  await store.update(again, "edited after rescue");
-  assert.equal((await store.entries(store.files[0]))[0].created, original.toISOString());
-});
-
-test("interrupted rescue keeps the source and finishes once on restart", async () => {
-  const { app, store } = fixture();
-  await store.capture("durable", new Date(2026, 8, 30), "recover-me");
-  const entry = (await store.entries(store.files[0]))[0];
-  const process = app.vault.process.bind(app.vault);
-  app.vault.process = async (file, work) => {
-    if (file.path === entry.path) throw new Error("Interrupted source removal");
-    return process(file, work);
-  };
-  await assert.rejects(() => store.rescue(entry, new Date(2026, 9, 25)), /Interrupted/);
-  assert.equal(parseEntries(app.vault.texts.get(entry.path)!, entry.path).length, 1);
-  app.vault.process = process;
-  const reopened = new Store(app, "Karpathy");
-  await reopened.recoverRescue();
-  await reopened.recoverRescue();
-  const entries = (await Promise.all(reopened.files.map(file => reopened.entries(file)))).flat();
-  assert.equal(entries.length, 1);
-  assert.equal(entries[0].body, "durable");
-  assert.equal(app.loadLocalStorage("karpathy:rescue:Karpathy"), null);
-});
-
-test("rescue refuses stale edits before writing a new entry", async () => {
-  const { app, store } = fixture();
-  await store.capture("original", new Date(2026, 8, 30), "stale-rescue");
-  const entry = (await store.entries(store.files[0]))[0];
-  await store.update(entry, "changed on another device");
-  await assert.rejects(() => store.rescue(entry, new Date(2026, 9, 25)), /changed elsewhere/);
-  assert.equal(app.vault.getMarkdownFiles().length, 1);
-  assert.match(app.vault.texts.get(entry.path)!, /changed on another device/);
-});
-function fixture() {
-  const app = new App();
-  return { app, store: new Store(app, "Karpathy") };
+function fixture(base = "Karpathy") { const app = new App(); return { app, store: new Store(app as any, base) }; }
+const date = new Date(2026, 9, 25, 12);
+async function find(store: Store, id: string) {
+  await store.countEntries();
+  for (const file of store.files) { const entry = (await store.entries(file))[0]; if (entry?.id === id) return entry; }
+  throw new Error("Missing " + id);
 }
 
-test("deleting one entry preserves its neighbors, daily note and attachments and invalidates search/counts", async () => {
-  const { app, store } = fixture();
-  const date = new Date(2026, 9, 25);
-  const link = await store.attachment(new File(["photo"], "keep.png", { type: "image/png" }), date);
-  await store.capture(`remove this\n\n${link}`, date, "delete-me");
-  await store.capture("keep this", date, "keep-me");
-  const file = store.files[0];
-  await app.vault.process(file, text => `---\ntitle: Daily notes\n---\n\n${text}`);
-  assert.equal(await store.countEntries(), 2);
-  const entry = (await store.page({ file: 0, offset: 0 }, 1, "remove this")).entries[0];
-  const before = await app.vault.read(file);
-  const attachments = [...app.vault.binaries.keys()];
-  await store.remove(entry);
-  assert.equal(await app.vault.read(file), before.slice(0, entry.start) + before.slice(entry.end));
-  assert.equal(await store.countEntries(), 1);
-  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "remove this")).entries.length, 0);
-  const remaining = (await store.entries(file))[0];
-  assert.equal(remaining.id, "keep-me");
-  await store.remove(remaining);
-  assert.equal(await store.countEntries(), 0);
-  assert.ok(app.vault.getAbstractFileByPath(file.path));
-  assert.match(await app.vault.read(file), /^---\ntitle: Daily notes\n---/);
-  assert.deepEqual([...app.vault.binaries.keys()], attachments);
-});
-
-test("deletion rejects stale entries and failed writes without losing current content", async () => {
-  const { app, store } = fixture();
-  await store.capture("original", new Date(2026, 9, 25), "delete-stale");
-  const file = store.files[0];
-  const entry = (await store.entries(file))[0];
-  await store.update(entry, "changed on another device");
-  const before = await app.vault.read(file);
-  await assert.rejects(() => store.remove(entry), /changed elsewhere/);
-  const current = (await store.entries(file))[0];
-  app.vault.failWrites = true;
-  await assert.rejects(() => store.remove(current), /Disk full/);
-  assert.equal(await app.vault.read(file), before);
-  assert.equal(await store.countEntries(), 1);
-  app.vault.failWrites = false;
-  await store.remove(current);
-  assert.equal(await store.countEntries(), 0);
-});
-
-test("deleting a rescued entry completes pending recovery so it cannot reappear", async () => {
-  const { app, store } = fixture();
-  await store.capture("move then delete", new Date(2026, 8, 30), "delete-recovered");
-  const source = (await store.entries(store.files[0]))[0];
-  const process = app.vault.process.bind(app.vault);
-  app.vault.process = async (file, work) => {
-    if (file.path === source.path) throw new Error("Interrupted source removal");
-    return process(file, work);
-  };
-  await assert.rejects(() => store.rescue(source, new Date(2026, 9, 25)), /Interrupted/);
-  app.vault.process = process;
-  const moved = (await store.page({ file: 0, offset: 0 }, 1, "")).entries[0];
-  assert.notEqual(moved.path, source.path);
-  await store.remove(moved);
-  assert.equal(app.loadLocalStorage("karpathy:rescue:Karpathy"), null);
-  const reopened = new Store(app, "Karpathy");
-  await reopened.recoverRescue();
-  assert.equal(await reopened.countEntries(), 0);
-});
-
-test("concurrent captures never overwrite one another and retries are idempotent", async () => {
-  const { app, store } = fixture();
-  const date = new Date(2026, 9, 25, 12);
-  await Promise.all(Array.from({ length: 25 }, (_, i) => store.capture(`entry ${i}`, date, `id-${i}`)));
-  const path = dailyPath("Karpathy", date);
-  assert.equal(parseEntries(app.vault.texts.get(path)!, path).length, 25);
+test("each capture creates an independent file, including the vault root; retries are idempotent", async () => {
+  const { app, store } = fixture("");
+  await Promise.all(Array.from({ length: 25 }, (_, i) => store.capture("entry " + i, date, "id-" + i)));
+  assert.equal(await store.countEntries(), 25);
+  assert.equal(app.vault.getMarkdownFiles().length, 25);
+  const path = entryPath("", date, "id-4");
+  assert.equal(parseEntries(app.vault.texts.get(path)!, path)[0].body, "entry 4");
   await store.capture("entry 4", date, "id-4");
-  assert.equal(parseEntries(app.vault.texts.get(path)!, path).length, 25);
-  await assert.rejects(() => store.capture("different body", date, "id-4"), /different version/);
+  assert.equal(await store.countEntries(), 25);
+  await assert.rejects(() => store.capture("different", date, "id-4"), /different version/);
+  await store.close();
 });
-
-test("atomic editing rejects stale versions while unrelated entries remain intact", async () => {
+test("rescue updates one permanent file atomically and preserves relative links, creation and properties", async () => {
   const { app, store } = fixture();
-  const date = new Date(2026, 9, 25, 12);
-  await store.capture("original", date, "entry");
-  await store.capture("other", date, "other");
-  const entry = (await store.entries(store.files[0])).find(entry => entry.id === "entry")!;
-  await store.update(entry, "updated");
+  const original = new Date(2025, 11, 31, 23);
+  await store.capture("[[../reference]]\n![[attachments/photo.png]]", original, "rescue");
+  const entry = await find(store, "rescue");
+  await store.rescue(entry, date);
+  const rescued = await find(store, "rescue");
+  assert.equal(rescued.path, entry.path);
+  assert.equal(rescued.created, original.toISOString());
+  assert.equal(rescued.timestamp, date.toISOString());
+  assert.equal(rescued.body, entry.body); assert.equal(rescued.rescues, 1);
+  await store.rescue(rescued, new Date(2027, 0, 1));
+  assert.equal((await find(store, "rescue")).rescues, 2);
+  assert.equal(app.vault.getMarkdownFiles().length, 1);
+  assert.equal(app.local.has("karpathy:rescue:Karpathy"), false);
+  await store.close();
+});
+test("failed rescue leaves the original intact; retry does not create or move a file", async () => {
+  const { app, store } = fixture();
+  await store.capture("durable", date, "rescue");
+  const entry = await find(store, "rescue"); const before = app.vault.texts.get(entry.path);
+  app.vault.failWrites = true;
+  await assert.rejects(() => store.rescue(entry), /Disk full/);
+  assert.equal(app.vault.texts.get(entry.path), before);
+  app.vault.failWrites = false;
+  await store.rescue(entry);
+  assert.equal((await find(store, "rescue")).rescues, 1);
+  assert.equal(app.vault.getMarkdownFiles().length, 1);
+  await store.close();
+});
+test("stale edits, rescue and deletion preserve externally changed content", async () => {
+  const { app, store } = fixture();
+  await store.capture("original", date, "entry"); await store.capture("neighbor", date, "other");
+  const entry = await find(store, "entry"); const neighbor = await find(store, "other");
+  const untouched = app.vault.texts.get(neighbor.path);
+  await store.update(entry, "changed elsewhere");
   await assert.rejects(() => store.update(entry, "stale"), /changed elsewhere/);
-  const text = app.vault.texts.get(entry.path)!;
-  assert.deepEqual(new Set(parseEntries(text, entry.path).map(entry => entry.body)), new Set(["updated", "other"]));
+  await assert.rejects(() => store.rescue(entry), /changed elsewhere/);
+  await assert.rejects(() => store.remove(entry), /changed elsewhere/);
+  assert.equal(app.vault.texts.get(neighbor.path), untouched);
+  assert.equal((await find(store, "entry")).body, "changed elsewhere");
+  await store.close();
 });
-
-test("forward and backward pagination cover history without omissions or duplication", async () => {
+test("delete trashes just the entry file, retains attachments, and cannot be restored by the index", async () => {
+  const { app, store } = fixture();
+  const image = await store.attachment(new File(["photo"], "image.png", { type: "image/png" }), date);
+  await store.capture(image, date, "remove"); await store.capture("keep", date, "keep");
+  const entry = await find(store, "remove");
+  app.vault.failWrites = true;
+  await assert.rejects(() => store.remove(entry), /Disk full/);
+  assert.equal(await store.countEntries(), 2);
+  app.vault.failWrites = false;
+  await store.remove(entry);
+  assert.equal(app.vault.getAbstractFileByPath(entry.path), null);
+  assert.equal(app.vault.binaries.size, 1);
+  assert.equal(await store.countEntries(), 1);
+  await store.close();
+  const reopened = new Store(app as any, "Karpathy");
+  assert.equal(await reopened.countEntries(), 1);
+  assert.equal((await reopened.page({ file: 0, offset: 0 }, 1, "image")).entries.length, 0);
+  await reopened.close();
+});
+test("forward and backward pages cover history in rescue order without gaps", async () => {
   const { store } = fixture();
-  for (let day = 1; day <= 12; day++) {
-    for (let entry = 0; entry < 4; entry++) await store.capture(`day ${day} entry ${entry}`, new Date(2026, 9, day, entry), `d-${day}-${entry}`);
-  }
-  let cursor = { file: 0, offset: 0 };
+  for (let i = 0; i < 80; i++) await store.capture("entry " + i, new Date(2026, 9, 1, 0, i), "id-" + i);
+  await store.rescue(await find(store, "id-0"), date);
+  let cursor = { file: 0, offset: 0 }, exhausted = false;
   const ids: string[] = [];
-  let end = false;
-  while (!end) {
-    const page = await store.page(cursor, 1, "", 7);
-    ids.push(...page.entries.map(entry => entry.id));
-    cursor = page.end;
-    end = page.exhausted;
-  }
-  assert.equal(ids.length, 48);
-  assert.equal(new Set(ids).size, 48);
-  assert.equal(ids[0], "d-12-3");
-  assert.equal(ids.at(-1), "d-1-0");
-  // Reverse traversal starts at the end of the last file, not beyond the array.
-  cursor = { file: store.files.length - 1, offset: (await store.entries(store.files.at(-1)!)).length };
-  const backwards: string[] = [];
-  end = false;
-  while (!end) {
-    const page = await store.page(cursor, -1, "", 7);
-    backwards.unshift(...page.entries.map(entry => entry.id));
-    cursor = page.start;
-    end = page.exhausted;
-  }
+  while (!exhausted) { const page = await store.page(cursor, 1, "", 13); ids.push(...page.entries.map(entry => entry.id)); cursor = page.end; exhausted = page.exhausted; }
+  assert.equal(ids.length, 80); assert.equal(new Set(ids).size, 80); assert.equal(ids[0], "id-0");
+  const backwards: string[] = []; exhausted = false;
+  while (!exhausted) { const page = await store.page(cursor, -1, "", 13); backwards.unshift(...page.entries.map(entry => entry.id)); cursor = page.start; exhausted = page.exhausted; }
   assert.deepEqual(backwards, ids);
+  await store.close();
 });
-
-test("search scans bounded batches and finds matches beyond the initial history", async () => {
-  const { store } = fixture();
-  for (let day = 1; day <= 20; day++) await store.capture(day === 1 ? "read: distant book" : "ordinary", new Date(2026, 9, day), `day-${day}`);
-  let page = await store.page({ file: 0, offset: 0 }, 1, "read: book");
-  assert.equal(page.entries.length, 0);
-  assert.equal(page.end.file, 8);
-  assert.equal(page.exhausted, false);
-  page = await store.page(page.end, 1, "read: book");
-  page = await store.page(page.end, 1, "read: book");
-  assert.equal(page.entries[0].body, "read: distant book");
-  assert.equal(page.exhausted, true);
-});
-
-test("cache avoids repeat reads, evicts old days, and invalidates same-stat edits", async () => {
+test("local index survives reopening, counts without reading bodies and skips nonmatching files", async () => {
   const { app, store } = fixture();
-  for (let day = 1; day <= 20; day++) await store.capture(`day ${day}`, new Date(2026, 9, day), `day-${day}`);
-  const file = store.files[0];
+  for (let i = 0; i < 90; i++) await store.capture(i === 1 ? "read: distant book" : "ordinary", new Date(2026, 9, 1, 0, i), "id-" + i);
+  await store.close();
   const before = app.vault.reads;
-  await store.entries(file); await store.entries(file);
-  assert.equal(app.vault.reads - before, 1);
-  app.vault.texts.set(file.path, serializeEntry("changed", new Date(2026, 9, 20).toISOString(), "external"));
-  store.invalidate(file.path);
-  assert.equal((await store.entries(file))[0].body, "external");
-  for (const item of store.files) await store.entries(item);
-  const after = app.vault.reads;
-  await store.entries(file);
-  assert.equal(app.vault.reads, after + 1);
+  const reopened = new Store(app as any, "Karpathy");
+  assert.equal(await reopened.countEntries(), 90); assert.equal(app.vault.reads, before);
+  const page = await reopened.page({ file: 0, offset: 0 }, 1, "read: book");
+  assert.equal(page.entries[0].id, "id-1"); assert.equal(app.vault.reads - before, 1);
+  assert.equal(page.exhausted, true);
+  await reopened.close();
 });
-
-test("attachments go to the entry month with unique sanitized image embeds and file links", async () => {
-  const { app, store } = fixture();
-  const date = new Date(2026, 0, 1, 0, 1);
-  const image = new File([new Uint8Array([1, 2, 3])], "image.png", { type: "image/png" });
-  const [one, two] = await Promise.all([store.attachment(image, date), store.attachment(image, date)]);
-  assert.match(one, /^!\[\[Karpathy\/2026\/2026-01\/attachments\//);
-  assert.equal(one, "![[Karpathy/2026/2026-01/attachments/image.png]]");
-  assert.equal(two, "![[Karpathy/2026/2026-01/attachments/image-2.png]]");
-  assert.notEqual(one, two);
-  const link = await store.attachment(new File(["abc"], "file#[x]|.pdf", { type: "application/pdf" }), date);
-  assert.match(link, /^\[\[/);
-  assert.ok(!link.includes("file#["));
-  assert.equal(app.vault.binaries.size, 3);
-  assert.deepEqual(new Uint8Array([...app.vault.binaries.values()][0]), new Uint8Array([1, 2, 3]));
+test("batched search pages stop at the exact match and can traverse backward without losing buffered matches", async () => {
+  const { store } = fixture();
+  for (let i = 0; i < 100; i++) await store.capture(i % 2 ? "matching" : "unrelated", new Date(2026, 9, 1, 0, i), "entry-" + i);
+  const expected = Array.from({ length: 50 }, (_, i) => "entry-" + (99 - i * 2));
+  let cursor = { file: 0, offset: 0 }, exhausted = false;
+  const found: string[] = [];
+  while (!exhausted) {
+    const page = await store.page(cursor, 1, "matching", 7);
+    assert.ok(page.entries.length <= 7);
+    found.push(...page.entries.map(entry => entry.id)); cursor = page.end; exhausted = page.exhausted;
+  }
+  assert.deepEqual(found, expected);
+  const backwards: string[] = []; exhausted = false;
+  while (!exhausted) {
+    const page = await store.page(cursor, -1, "matching", 7);
+    backwards.unshift(...page.entries.map(entry => entry.id)); cursor = page.start; exhausted = page.exhausted;
+  }
+  assert.deepEqual(backwards, expected);
+  assert.deepEqual((await store.page({ file: 0, offset: 0 }, 1, "matching", 7, () => false)).entries, []);
+  await store.close();
 });
-
-test("attachment names stay readable and collisions do not overwrite data", async () => {
+test("external create, same-stat modify, rename and delete invalidate local indexes", async () => {
   const { app, store } = fixture();
-  const date = new Date(2026, 9, 25);
-  const attach = (text: string) => store.attachment(new File([text], "notes.pdf", { type: "application/pdf" }), date);
-  const first = await attach("first");
-  const second = await attach("second");
-  assert.equal(first, "[[Karpathy/2026/2026-10/attachments/notes.pdf|notes.pdf]]");
-  assert.equal(second, "[[Karpathy/2026/2026-10/attachments/notes-2.pdf|notes-2.pdf]]");
-  assert.equal(new TextDecoder().decode(app.vault.binaries.get("Karpathy/2026/2026-10/attachments/notes.pdf")), "first");
-  const caseConflict = await store.attachment(new File(["uppercase"], "NOTES.pdf"), date);
-  assert.equal(caseConflict, "[[Karpathy/2026/2026-10/attachments/NOTES-3.pdf|NOTES-3.pdf]]");
-  const reserved = await store.attachment(new File(["safe"], "CON.pdf"), date);
-  assert.equal(reserved, "[[Karpathy/2026/2026-10/attachments/_CON.pdf|_CON.pdf]]");
+  await store.capture("original", date, "entry"); const entry = await find(store, "entry");
+  app.vault.texts.set(entry.path, serializeEntry(entry.id, entry.timestamp, "external"));
+  store.invalidate(entry.path);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "external")).entries[0].body, "external");
+  const copied = entry.path.replace(".md", " (conflict).md");
+  await app.vault.create(copied, serializeEntry(entry.id, entry.timestamp, "other version")); store.invalidate(copied);
+  assert.equal(await store.countEntries(), 2);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "other version")).entries[0].path, copied);
+  const newPath = entryPath("Karpathy", date, "renamed");
+  await app.vault.create(newPath, app.vault.texts.get(entry.path)!);
+  await app.vault.trash(app.vault.getAbstractFileByPath(entry.path) as TFile, true);
+  store.invalidate(entry.path); store.invalidate(newPath);
+  assert.equal(await store.countEntries(), 2);
+  assert.ok(!store.files.some(file => file.path === entry.path));
+  await store.close();
 });
-test("write failures surface and do not poison subsequent save operations", async () => {
+test("cache loss rebuilds from Markdown and malformed files never overwrite notes", async () => {
   const { app, store } = fixture();
-  const date = new Date(2026, 9, 25);
+  await store.capture("valid", date, "entry");
+  const invalid = entryPath("Karpathy", date, "invalid");
+  await app.vault.create(invalid, "---\nkarpathy: 2\n---\ninvalid"); store.invalidate(invalid);
+  await app.vault.create("Karpathy/2026/2026-10/2026-10-25.md", "legacy daily file"); store.reindex();
+  store.clear();
+  assert.equal(await store.countEntries(), 1);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "valid")).entries[0].body, "valid");
+  assert.equal(app.vault.texts.get(invalid), "---\nkarpathy: 2\n---\ninvalid");
+  await store.close();
+});
+test("changing the base never mixes or moves entry files", async () => {
+  const { app, store } = fixture();
+  await store.capture("first", date, "entry"); const original = store.files[0].path;
+  store.base = ""; store.clear(); store.reindex();
+  assert.equal(await store.countEntries(), 0);
+  await store.capture("root", date, "root"); assert.equal(await store.countEntries(), 1);
+  assert.ok(app.vault.texts.has(original));
+  await store.close();
+});
+test("attachment names are readable and unique across independent offline devices", async () => {
+  const one = fixture(), two = fixture();
+  const file = new File(["photo"], "image.png", { type: "image/png" });
+  const a = await one.store.attachment(file, date), b = await two.store.attachment(file, date);
+  assert.notEqual(a, b); assert.match(a, /^!\[\[Karpathy\/2026\/2026-10\/attachments\/image-\d{17}-[a-f0-9]{12}\.png\]\]$/);
+  const link = await one.store.attachment(new File(["pdf"], "CON.pdf"), date);
+  assert.match(link, /\/_CON-/); assert.match(link, /\|_CON.pdf\]\]$/);
+  const unsafe = await one.store.attachment(new File(["pdf"], "file#[x]|.pdf"), date);
+  assert.ok(!unsafe.includes("file#[")); assert.equal(one.app.vault.binaries.size, 3);
+  await one.store.close(); await two.store.close();
+});
+test("independent offline captures combine without sharing a daily write target", async () => {
+  const one = fixture(), two = fixture();
+  const idA = uniqueId(), idB = uniqueId();
+  await one.store.capture("phone capture", date, idA); await two.store.capture("desktop capture", date, idB);
+  for (const [path, text] of two.app.vault.texts) { await one.app.vault.create(path, text); one.store.invalidate(path); }
+  assert.equal(await one.store.countEntries(), 2);
+  assert.deepEqual(new Set((await one.store.page({ file: 0, offset: 0 }, 1, "")).entries.map(entry => entry.body)), new Set(["phone capture", "desktop capture"]));
+  await one.store.close(); await two.store.close();
+});
+test("failed writes and occupied paths preserve data and permit retry", async () => {
+  const { app, store } = fixture();
   app.vault.failWrites = true;
   await assert.rejects(() => store.capture("draft", date, "retry"), /Disk full/);
-  app.vault.failWrites = false;
-  await store.capture("draft", date, "retry");
-  assert.equal((await store.entries(store.files[0]))[0].body, "draft");
-});
-
-test("file conflicts are explicit rather than redirected or overwritten", async () => {
-  const { app, store } = fixture();
-  await app.vault.create("Karpathy", "not a folder");
-  await assert.rejects(() => store.capture("draft", new Date(2026, 9, 25), "blocked"), /file occupies/);
-  const other = fixture();
-  const date = new Date(2026, 9, 25);
-  const path = dailyPath("Karpathy", date);
-  await other.app.vault.createFolder(path);
-  await assert.rejects(() => other.store.capture("draft", date, "blocked"), /folder occupies/);
-  assert.ok(!(other.app.vault.getAbstractFileByPath(path) instanceof TFile));
+  app.vault.failWrites = false; await store.capture("draft", date, "retry");
+  assert.equal((await find(store, "retry")).body, "draft");
+  const path = entryPath("Karpathy", date, "blocked"); await app.vault.createFolder(path);
+  await assert.rejects(() => store.capture("draft", date, "blocked"), /folder occupies/);
+  await store.close();
 });

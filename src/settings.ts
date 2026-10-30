@@ -67,9 +67,9 @@ export class KarpathySettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Karpathy" });
-    containerEl.createEl("p", { text: "Daily Markdown files, one continuous stream. All settings are vault-local." });
+    containerEl.createEl("p", { text: "One Markdown file per entry, one continuous stream. All settings are vault-local." });
     new Setting(containerEl).setName("Base notes folder")
-      .setDesc("Leave blank or enter / for the vault root. Files use yyyy/yyyy-mm/yyyy-mm-dd.md. Changing this does not move existing notes or attachments.")
+      .setDesc("Leave blank or enter / for the vault root. Entry files live in yyyy/yyyy-mm/ with unique date-based names. Changing this does not move existing notes or attachments.")
       .addText(text => text.setPlaceholder("Vault root").setValue(this.plugin.settings.baseFolder).onChange(value => { text.inputEl.dataset.pending = value; }))
       .addButton(button => button.setButtonText("Apply").onClick(() => {
         const input = containerEl.querySelector<HTMLInputElement>("input[type=text]");

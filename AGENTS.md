@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Karpathy is an Obsidian append-and-review stream for desktop and mobile. `src/main.ts` manages plugin lifecycle; `view.ts` renders the stream; `editor.ts` and `preview.ts` implement CodeMirror editing. `store.ts` handles persistence, rescue, and caches; `model.ts` defines entry parsing and serialization. Settings and date helpers have separate modules. Keep styling in `styles.css`, tests and mocks in `tests/`, and README screenshots in `docs/images/`.
+Karpathy is an Obsidian append-and-review stream for desktop and mobile. `src/main.ts` manages plugin lifecycle; `view.ts` renders the stream; `editor.ts` and `preview.ts` implement CodeMirror editing. `store.ts` handles per-entry persistence and rescue; `index.ts` provides a device-local IndexedDB cache; `model.ts` defines entry parsing and serialization. Settings and date helpers have separate modules. Keep styling in `styles.css`, tests and mocks in `tests/`, and README screenshots in `docs/images/`.
 
 ## Build, Test, and Development Commands
 
@@ -31,6 +31,6 @@ Until the user changes this instruction, complete requested changes by committin
 
 ## Data Safety & Local Workspace
 
-Preserve Markdown entry boundaries, attachment links, atomic writes, and rescue recovery. Keep caches and rendered entries bounded. Never commit vault notes, settings, drafts, or generated bundles.
+Preserve entry identity, YAML properties, attachment links, and atomic writes. Rescue updates metadata in place; indexes must remain device-local and rebuildable. Version 1 daily files are not converted. Keep caches and rendered entries bounded. Never commit vault notes, settings, drafts, or generated bundles.
 
 This repository is the canonical source. The working vault is `C:\Users\da5is\Documents\karpathy.md`. Both reference plugins under `C:\Users\da5is\OneDrive\Documents\karpathy.md\.obsidian\plugins\` (`karpathy` and `obsidian-jot-plugin`) are read-only.

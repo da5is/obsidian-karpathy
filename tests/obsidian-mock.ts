@@ -31,6 +31,7 @@ Object.assign(dom.window.HTMLElement.prototype, {
   setText(text: string) { this.textContent = text; }
 });
 
+export { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 export class TAbstractFile { path = ""; name = ""; parent = null; }
 export class TFile extends TAbstractFile { extension = "md"; basename = ""; stat = { mtime: 1, ctime: 1, size: 0 }; }
 export class TFolder extends TAbstractFile { children: TAbstractFile[] = []; }
@@ -109,6 +110,11 @@ export class MemoryVault {
     return file;
   }
   async read(file: TFile) { this.reads++; return this.texts.get(file.path) ?? ""; }
+  async trash(file: TFile, _system: boolean) {
+    if (this.failWrites) throw new Error("Disk full");
+    this.files.delete(file.path); this.texts.delete(file.path); this.binaries.delete(file.path);
+    for (const parent of this.files.values()) if (parent instanceof TFolder) parent.children = parent.children.filter(child => child !== file);
+  }
   async process(file: TFile, work: (text: string) => string) {
     const old = this.locks.get(file.path) ?? Promise.resolve();
     const next = old.catch(() => undefined).then(async () => {

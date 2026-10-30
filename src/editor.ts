@@ -79,12 +79,12 @@ export class CaptureEditor {
           markdown({ base: markdownLanguage, addKeymap: false }),
           syntaxHighlighting(defaultHighlightStyle),
           syntaxHighlighting(HighlightStyle.define([
-            { tag: tags.strong, fontWeight: "700" },
-            { tag: tags.emphasis, fontStyle: "italic" },
+            { tag: tags.strong, class: "karpathy-strong" },
+            { tag: tags.emphasis, class: "karpathy-emphasis" },
             { tag: tags.strikethrough, textDecoration: "line-through" },
-            { tag: tags.heading, fontWeight: "700", color: "var(--text-normal)" },
-            { tag: tags.monospace, fontFamily: "var(--font-monospace)", color: "var(--text-accent)" },
-            { tag: tags.link, color: "var(--text-accent)", textDecoration: "underline" }
+            { tag: tags.heading, class: "karpathy-heading-text" },
+            { tag: tags.monospace, fontFamily: "var(--font-monospace)", color: "var(--code-normal)" },
+            { tag: tags.link, class: "karpathy-live-link" }
           ])),
           prefix, livePreview(options.resolveImage), this.readOnly.of(EditorState.readOnly.of(false)),
           placeholder("Capture a thought..."),

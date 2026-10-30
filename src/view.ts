@@ -406,7 +406,8 @@ export class KarpathyView extends ItemView {
         setIcon(edit.createSpan({ cls: "karpathy-action-icon" }), "pencil");
         edit.createSpan({ cls: "karpathy-action-label", text: "Edit" });
         edit.addEventListener("click", () => new EntryEditor(this.plugin, entry).open());
-        const source = actions.createEl("button", { text: "⋯", attr: { "aria-label": "More entry actions", title: "More actions" } });
+        const source = actions.createEl("button", { attr: { "aria-label": "More entry actions", title: "More actions" } });
+        setIcon(source.createSpan({ cls: "karpathy-action-icon" }), "ellipsis");
         source.addEventListener("click", event => {
           const menu = new Menu();
           menu.addItem(item => item.setTitle("Open daily Markdown note").setIcon("file-text").onClick(() => {

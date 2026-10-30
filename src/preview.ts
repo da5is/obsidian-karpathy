@@ -65,8 +65,15 @@ export function livePreview(resolveImage?: (link: string) => string | null) {
               return false;
             }
           }
-          if (/^ATXHeading[1-6]$/.test(node.name)) {
-            ranges.push(Decoration.line({ class: `karpathy-heading-${node.name.at(-1)}` }).range(view.state.doc.lineAt(node.from).from));
+          if (/^(?:ATX|Setext)Heading[1-6]$/.test(node.name)) {
+            // Native heading classes inherit the active theme's complete type
+            // scale, including fonts, colors, weights and letter spacing.
+            const level = node.name.at(-1);
+            const firstLine = view.state.doc.lineAt(node.from).number;
+            const lastLine = view.state.doc.lineAt(node.to).number - (node.name.startsWith("Setext") ? 1 : 0);
+            for (let line = firstLine; line <= lastLine; line++) {
+              ranges.push(Decoration.line({ class: `karpathy-heading-${level} HyperMD-header HyperMD-header-${level}` }).range(view.state.doc.line(line).from));
+            }
           }
           if (node.name === "TaskMarker" && !editing(node.from, node.to)) {
             ranges.push(Decoration.replace({ widget: new TaskWidget(/x/i.test(view.state.sliceDoc(node.from, node.to)), node.from) }).range(node.from, node.to));

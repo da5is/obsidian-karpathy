@@ -16,6 +16,7 @@ const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false
 
 export interface EditorOptions {
   body: string;
+  fetchTitles?: () => boolean;
   colors: Record<string, string>;
   tripleEnter: boolean;
   change: (body: string) => void;
@@ -37,6 +38,8 @@ export class CaptureEditor {
   private hotkeys: KeymapEventHandler[] = [];
 
   constructor(parent: HTMLElement, private options: EditorOptions) {
+    const documentMode = new Compartment();
+    const mode = (size: number) => size > 100000 ? [] : [EditorView.lineWrapping, markdown({ base: markdownLanguage, addKeymap: false })];
     const prefix = ViewPlugin.fromClass(class {
       decorations: DecorationSet;
       constructor(view: EditorView) { this.decorations = this.build(view); }
@@ -45,7 +48,7 @@ export class CaptureEditor {
       }
       build(view: EditorView): DecorationSet {
         const line = view.state.doc.line(1);
-        const match = entryPrefix(line.text);
+        const match = entryPrefix(view.state.sliceDoc(0, Math.min(line.to, 1000)));
         if (!match) return Decoration.none;
         const color = options.colors[match[1].toLowerCase()];
         if (!color) return Decoration.none;
@@ -58,7 +61,13 @@ export class CaptureEditor {
       state: EditorState.create({
         doc: options.body,
         extensions: [
-          history(), EditorView.lineWrapping, bracketMatching(),
+          history(), bracketMatching(),
+          documentMode.of(mode(options.body.length)),
+          EditorState.transactionExtender.of(transaction => {
+            if ((transaction.startState.doc.length > 100000) !== (transaction.newDoc.length > 100000))
+              return { effects: documentMode.reconfigure(mode(transaction.newDoc.length)) };
+            return null;
+          }),
           options.completeLink ? [
             autocompletion({
               override: [options.completeLink], defaultKeymap: false, icons: false,
@@ -76,7 +85,6 @@ export class CaptureEditor {
               }
             })
           ] : [],
-          markdown({ base: markdownLanguage, addKeymap: false }),
           syntaxHighlighting(defaultHighlightStyle),
           syntaxHighlighting(HighlightStyle.define([
             { tag: tags.strong, class: "karpathy-strong" },
@@ -110,18 +118,7 @@ export class CaptureEditor {
                   const native = nativeClipboardFiles();
                   if (!native) return false;
                   event.preventDefault();
-                  // Lock while reading OS files so the intended insertion point stays stable.
-                  this.pending++;
-                  this.lock(true);
-                  options.busy(true);
-                  void native.then(files => {
-                    this.lock(false);
-                    if (!this.destroyed) this.attach(files);
-                  }).catch(options.error).finally(() => {
-                    this.pending--;
-                    this.lock(false);
-                    options.busy(this.pending > 0);
-                  });
+                  this.attach(native);
                   return true;
                 } catch (error) { options.error(error); return false; }
               }
@@ -144,7 +141,7 @@ export class CaptureEditor {
               return true;
             }
           }),
-          urlPaste(),
+          urlPaste(5000, options.fetchTitles),
           Prec.highest(keymap.of([
             { key: "Ctrl-Enter", run: () => { options.save(); return true; } },
             { key: "Meta-Enter", run: () => { options.save(); return true; } },
@@ -247,8 +244,8 @@ export class CaptureEditor {
     return true;
   }
 
-  attach(files: File[]): void {
-    if (this.view.state.readOnly || !files.length) return;
+  attach(files: File[] | AsyncIterable<File>): void {
+    if (this.destroyed || this.view.state.readOnly || (Array.isArray(files) && !files.length)) return;
     const marker = `<!-- uploading:${uniqueId()} -->`;
     const selection = this.view.state.selection.main;
     const before = this.view.state.sliceDoc(0, selection.from);
@@ -259,7 +256,10 @@ export class CaptureEditor {
     const work = (async () => {
       const links: string[] = [];
       try {
-        for (const file of files) links.push(...await this.options.upload([file]));
+        for await (const file of files) {
+          if (file.size > 50 * 1024 * 1024) throw new Error("Attachments are limited to 50 MiB each. Add larger files to the vault and link them.");
+          links.push(...await this.options.upload([file]));
+        }
       } catch (error) {
         this.options.error(error);
       } finally {

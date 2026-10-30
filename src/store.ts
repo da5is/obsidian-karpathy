@@ -23,6 +23,7 @@ export class Store {
   private verification?: Promise<void>;
   private verificationTimer?: ReturnType<typeof setTimeout>;
   onReconciled?: () => void;
+  onProgress?: (remaining: number, total: number) => void;
   private lastVerification = 0;
 
   // Re-read authoritative files in small batches, including same-stat changes.
@@ -141,6 +142,7 @@ export class Store {
     if (!this.rebuilding) {
       this.rebuilding = (async () => {
         while (this.dirty.size && !this.closed) {
+          this.onProgress?.(this.dirty.size, this.candidates.size);
           const paths: string[] = [];
           for (const path of this.dirty) { paths.push(path); if (paths.length === 32) break; }
           for (let i = 0; i < paths.length; i += 8) {
@@ -151,7 +153,7 @@ export class Store {
           }
           if (this.dirty.size) await new Promise(resolve => setTimeout(resolve, 0));
         }
-      })().finally(() => { this.rebuilding = undefined; });
+      })().finally(() => { this.rebuilding = undefined; this.onProgress?.(0, this.candidates.size); });
     }
     await this.rebuilding;
   }
@@ -324,6 +326,7 @@ export class Store {
   }
 
   async attachment(file: File, date: Date, base = this.base): Promise<string> {
+    if (file.size > 50 * 1024 * 1024) throw new Error("Attachments are limited to 50 MiB each. Add larger files to the vault and link them.");
     const folder = attachmentFolder(baseFolder(base), date);
     await this.folder(folder);
     const cleaned = file.name.replace(/[<>:"/\\|?*#^[\]\u0000-\u001f]/g, "-").replace(/^[. ]+|[. ]+$/g, "").slice(-140);

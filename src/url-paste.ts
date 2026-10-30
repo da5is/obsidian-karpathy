@@ -19,6 +19,16 @@ function markdownLink(title: string, url: string): string {
   return `[${label}](${destination})`;
 }
 
+function evenBackticks(text: string): boolean {
+  let ticks = 0, slashes = 0;
+  for (const char of text) {
+    if (char.charCodeAt(0) === 92) { slashes++; continue; }
+    if (char.charCodeAt(0) === 96 && slashes % 2 === 0) ticks++;
+    slashes = 0;
+  }
+  return ticks % 2 === 0;
+}
+
 function canFormat(state: EditorState, from = state.selection.main.from, to = state.selection.main.to): boolean {
   if (state.readOnly || state.selection.ranges.length !== 1) return false;
   if (state.doc.lineAt(from).number !== state.doc.lineAt(to).number) return false;
@@ -35,11 +45,17 @@ function canFormat(state: EditorState, from = state.selection.main.from, to = st
   // Incomplete Markdown and wikilinks may not have a syntax-tree node yet.
   const before = state.sliceDoc(state.doc.lineAt(from).from, from);
   return !/(?:\[\[[^\]\n]*|!?\[[^\]\n]*\]\([^\)\n]*|<[^>\n]*)$/.test(before) &&
-    (before.match(/(?<!\\)`/g)?.length ?? 0) % 2 === 0;
+    evenBackticks(before);
 }
 
+// requestUrl has no abort API: retain the slot until the actual request settles.
+let titleRequests = 0;
 async function pageTitle(url: string, doc: Document): Promise<string | null> {
+  if (titleRequests >= 4) return null;
+  titleRequests++;
+  try {
   const response = await requestUrl({ url, headers: { Accept: "text/html,application/xhtml+xml" }, throw: false });
+  if (response.text.length > 2 * 1024 * 1024) return null;
   if (response.status < 200 || response.status >= 300) return null;
   const contentType = Object.entries(response.headers).find(([key]) => key.toLowerCase() === "content-type")?.[1];
   if (contentType && !/^(?:text\/html|application\/xhtml\+xml)(?:;|$)/i.test(contentType)) return null;
@@ -54,13 +70,14 @@ async function pageTitle(url: string, doc: Document): Promise<string | null> {
     if (title) return title.slice(0, 500);
   }
   return null;
+  } finally { titleRequests--; }
 }
 
 interface Lookup { from: number; to: number; url: string; timer: ReturnType<typeof setTimeout> }
 
 // Insert first and enhance only that untouched range. Saving, undoing, editing
 // the URL or closing the editor invalidates the lookup; no saved note is rewritten.
-export function urlPaste(timeout = 5000) {
+export function urlPaste(timeout = 5000, enabled: () => boolean = () => true) {
   return ViewPlugin.fromClass(class {
     private lookups = new Set<Lookup>();
     constructor(private view: EditorView) {}
@@ -99,7 +116,7 @@ export function urlPaste(timeout = 5000) {
         selection: { anchor: selection.from + insert.length },
         userEvent: "input.paste", scrollIntoView: true
       });
-      if (selected || this.lookups.size >= 8) return true;
+      if (selected || !enabled() || this.lookups.size >= 8) return true;
       const lookup: Lookup = { from: selection.from, to: selection.from + url.length, url,
         timer: setTimeout(() => this.cancel(lookup), timeout) };
       this.lookups.add(lookup);

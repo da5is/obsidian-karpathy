@@ -5,7 +5,7 @@ Scope: performance, stability, and desktop/mobile compatibility. No runtime
 changes are included in this review.
 
 **Priority:** P1 = address next because of draft safety or loss of access;
-P2 = next hardening work; P3 = later improvement. KAR-002 through KAR-006 are implemented in 2.0.1; other items remain open.
+P2 = next hardening work; P3 = later improvement. See the delivery status below for implemented changes and remaining validation.
 **Evidence:** Reproduced = exercised against current source with the existing
 Obsidian mocks; inspection = established code path, not a measured device
 failure; validation gap = needs host/device testing.
@@ -14,6 +14,16 @@ The existing 92 tests, TypeScript checks, and production build pass. Seven addit
 probes reproduce KAR-001 through KAR-007. These probes use in-memory vaults and
 fake IndexedDB; no user notes were changed. Passing existing tests does not cover
 the failure cases below.
+
+## Delivery status — 2.1.0
+
+KAR-001, KAR-007, KAR-013 and KAR-015 have code fixes and regression coverage.
+KAR-008 through KAR-012 and KAR-014 have implementation changes; physical-device
+performance, minimum-version/runtime compatibility, peak-memory, native pop-out,
+and sync/trash matrix checks remain open. See [validation and operational
+limits](compatibility.md). The original findings below are retained as the review
+baseline, not descriptions of all current behavior. KAR-002 through KAR-006
+shipped in 2.0.1. No distributed merge or conversion was introduced.
 
 ## Next: protect drafts and keep the stream available
 

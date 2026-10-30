@@ -1,3 +1,4 @@
+import { StorageHealth } from "./health";
 import { FileSystemAdapter, getLinkpath, Notice, Platform, Plugin, TAbstractFile, TFile } from "obsidian";
 import { baseFolder, Entry, entryPrefix } from "./model";
 import { DEFAULT_SETTINGS, KarpathySettingsTab, parseSettings, Settings, themePrefixColor } from "./settings";
@@ -11,25 +12,90 @@ export default class KarpathyPlugin extends Plugin {
   settings: Settings = { ...DEFAULT_SETTINGS };
   store!: Store;
   readonly links = new WikilinkIndex(this.app);
-  private hiddenStyle?: HTMLStyleElement;
-  private folderObserver?: MutationObserver;
-  private hideFrame?: number;
+  private folderObservers: MutationObserver[] = [];
   private refreshTimer?: number;
   editing = 0;
-  private prefixWrites: Promise<void> = Promise.resolve();
+  private settingsWrites: Promise<void> = Promise.resolve();
+  private pendingSettings?: Settings;
+  private draftOwners = new Map<string, { owner: object; focus: () => void }>();
+  private pendingDrafts = new Map<string, Draft | null>();
+  private draftTimer?: ReturnType<typeof setTimeout>;
+
+  claimDraft(key: string, owner: object, focus: () => void): boolean {
+    const current = this.draftOwners.get(key);
+    if (current && current.owner !== owner) { current.focus(); return false; }
+    this.draftOwners.set(key, { owner, focus });
+    return true;
+  }
+  releaseDraft(key: string, owner: object): void {
+    this.flushDrafts();
+    if (this.draftOwners.get(key)?.owner === owner) this.draftOwners.delete(key);
+  }
+  updateSettings(change: (next: Settings) => void): Promise<void> {
+    const work = this.settingsWrites.catch(() => {}).then(async () => {
+      const next = structuredClone(this.settings);
+      change(next);
+      if (JSON.stringify(next) === JSON.stringify(this.settings)) return;
+      const pendingBase = this.pendingSettings?.baseFolder;
+      const persisted = pendingBase !== undefined && next.baseFolder === this.settings.baseFolder ? { ...next, baseFolder: pendingBase } : next;
+      await this.saveData(persisted);
+      if (this.pendingSettings) this.pendingSettings = persisted.baseFolder === next.baseFolder ? undefined : persisted;
+      this.settings = next;
+      this.changed();
+    });
+    this.settingsWrites = work;
+    return work;
+  }
+  async onExternalSettingsChange(): Promise<void> {
+    const work = this.settingsWrites.catch(() => {}).then(async () => {
+      this.pendingSettings = parseSettings(await this.loadData());
+      await this.adoptPendingSettings();
+    });
+    this.settingsWrites = work;
+    await work;
+  }
+  applyPendingSettings(): Promise<void> {
+    const work = this.settingsWrites.catch(() => {}).then(() => this.adoptPendingSettings());
+    this.settingsWrites = work;
+    return work;
+  }
+  private async adoptPendingSettings(): Promise<void> {
+    const next = this.pendingSettings;
+    if (!next) return;
+    if (next.baseFolder !== this.settings.baseFolder && (this.views().some(view => view.hasDraft) || this.editing)) {
+      new Notice("Synced folder change is waiting. Save your drafts and close entry editors, then run Apply synced settings.");
+      return;
+    }
+    this.pendingSettings = undefined;
+    const changedBase = next.baseFolder !== this.settings.baseFolder;
+    this.settings = next;
+    if (changedBase) {
+      this.store.base = next.baseFolder; this.store.clear(); this.store.reindex();
+      for (const view of this.views()) await view.reconfigure();
+    }
+    this.applySidebarHiding(); this.applyFolderHiding(); this.changed();
+  }
   private sidebarDocuments = new Set<Document>();
 
   async onload(): Promise<void> {
     // Invalid persisted paths must not quietly redirect writes to another folder.
     this.settings = parseSettings(await this.loadData());
     this.store = new Store(this.app, this.settings.baseFolder);
+    this.store.onProgress = (remaining, total) => { for (const view of this.views()) view.indexProgress(remaining, total); };
     this.store.onReconciled = () => this.changed();
+    this.registerDomEvent(document, "visibilitychange", () => { if (document.hidden) this.flushDrafts(); });
+    this.registerDomEvent(window, "pagehide", () => this.flushDrafts());
+    this.register(() => this.flushDrafts());
+    this.addCommand({ id: "apply-synced-settings", name: "Apply synced settings", callback: () => {
+      void this.applyPendingSettings().catch(error => this.report(error));
+    } });
+    this.addCommand({ id: "storage-health", name: "Review storage health", callback: () => new StorageHealth(this.app, this.settings.baseFolder).open() });
     this.registerView(VIEW_TYPE, leaf => new KarpathyView(leaf, this));
     this.addSettingTab(new KarpathySettingsTab(this.app, this));
     this.addCommand({ id: "toggle-sidebars", name: "Toggle hidden sidebars", callback: () => {
       void this.setSidebarsHidden(!this.settings.hideSidebars).catch(error => this.report(error));
     } });
-    this.registerEvent(this.app.workspace.on("layout-change", () => this.applySidebarHiding()));
+    this.registerEvent(this.app.workspace.on("layout-change", () => { this.applySidebarHiding(); this.applyFolderHiding(); }));
     this.register(() => this.clearSidebarHiding());
     this.addRibbonIcon("notebook-pen", "Open Karpathy", () => { void this.open().catch(error => this.report(error)); });
     this.addCommand({ id: "open-stream", name: "Open stream", callback: () => { void this.open().catch(error => this.report(error)); } });
@@ -61,10 +127,9 @@ export default class KarpathyPlugin extends Plugin {
     });
     this.register(() => {
       window.clearTimeout(this.refreshTimer);
-      if (this.hideFrame !== undefined) window.cancelAnimationFrame(this.hideFrame);
-      this.folderObserver?.disconnect();
+      this.folderObservers.forEach(observer => observer.disconnect());
       this.unhide();
-      this.hiddenStyle?.remove();
+
       void this.store.close();
       this.links.clear();
     });
@@ -127,9 +192,10 @@ export default class KarpathyPlugin extends Plugin {
     if (this.views().some(view => view.hasDraft) || this.editing) {
       throw new Error("Save or clear the current draft and close entry editors before changing the base folder.");
     }
-    const next = { ...this.settings, baseFolder: folder };
-    await this.saveData(next);
-    this.settings = next;
+    await this.updateSettings(next => {
+      if (this.views().some(view => view.hasDraft) || this.editing) throw new Error("Save drafts before changing folders.");
+      next.baseFolder = folder;
+    });
     this.store.base = folder;
     this.store.clear();
     this.store.reindex();
@@ -137,30 +203,20 @@ export default class KarpathyPlugin extends Plugin {
     new Notice(`Karpathy now reads and writes in ${folder || "the vault root"}. Existing files have not been moved.`);
   }
 
-  async persistSettings(): Promise<void> {
-    try { await this.saveData(this.settings); this.changed(); }
-    catch (error) { this.report(error); throw error; }
-  }
-
   rememberPrefix(body: string): Promise<void> {
     const prefix = entryPrefix(body)?.[1].toLowerCase();
     if (!prefix) return Promise.resolve();
-    const work = this.prefixWrites.catch(() => undefined).then(async () => {
-      if (Object.prototype.hasOwnProperty.call(this.settings.prefixColors, prefix)) return;
-      const next = { ...this.settings, prefixColors: { ...this.settings.prefixColors, [prefix]: themePrefixColor(prefix) } };
-      await this.saveData(next);
-      this.settings = next;
-      this.changed();
+    if (Object.prototype.hasOwnProperty.call(this.settings.prefixColors, prefix)) return Promise.resolve();
+    return this.updateSettings(next => {
+      if (!Object.prototype.hasOwnProperty.call(next.prefixColors, prefix)) next.prefixColors[prefix] = themePrefixColor(prefix);
     });
-    this.prefixWrites = work;
-    return work;
   }
 
   draftKey(entry?: Entry): string {
     return entry ? `karpathy:edit:${entry.path}:${entry.id}` : `karpathy:capture:${this.settings.baseFolder}`;
   }
   readDraft(key: string): Draft | null {
-    const value: unknown = this.app.loadLocalStorage(key);
+    const value: unknown = this.pendingDrafts.has(key) ? this.pendingDrafts.get(key) : this.app.loadLocalStorage(key);
     if (!value || typeof value !== "object") return null;
     const draft = value as Partial<Draft>;
     if (typeof draft.body !== "string" || typeof draft.id !== "string" || !/^[a-zA-Z0-9-]+$/.test(draft.id) ||
@@ -173,8 +229,16 @@ export default class KarpathyPlugin extends Plugin {
     return { body: cleaned, id: draft.id, timestamp: draft.timestamp, original: draft.original };
   }
   writeDraft(key: string, draft: Draft | null): void {
-    try { this.app.saveLocalStorage(key, draft); }
-    catch (error) { this.report(new Error(`Could not preserve the draft on this device: ${String(error)}`)); }
+    this.pendingDrafts.set(key, draft ? { ...draft } : null);
+    if (!draft) { this.flushDrafts(); return; }
+    if (!this.draftTimer) this.draftTimer = setTimeout(() => this.flushDrafts(), 250);
+  }
+  flushDrafts(): void {
+    clearTimeout(this.draftTimer); this.draftTimer = undefined;
+    for (const [key, draft] of this.pendingDrafts) {
+      try { this.app.saveLocalStorage(key, draft); this.pendingDrafts.delete(key); }
+      catch (error) { this.report(new Error("Could not preserve the draft on this device: " + String(error))); }
+    }
   }
 
   report(error: unknown): void {
@@ -188,9 +252,7 @@ export default class KarpathyPlugin extends Plugin {
     }
   }
   async setSidebarsHidden(hidden: boolean): Promise<void> {
-    const next = { ...this.settings, hideSidebars: hidden };
-    await this.saveData(next);
-    this.settings = next;
+    await this.updateSettings(next => { next.hideSidebars = hidden; });
     this.applySidebarHiding();
   }
 
@@ -216,26 +278,20 @@ export default class KarpathyPlugin extends Plugin {
     return [...new Set([document, ...this.app.workspace.getLeavesOfType("file-explorer").map(leaf => leaf.view.containerEl.ownerDocument)])];
   }
   applyFolderHiding(): void {
-    this.folderObserver?.disconnect();
+    this.folderObservers.forEach(observer => observer.disconnect());
+    this.folderObservers = [];
     this.unhide();
     if (!this.settings.hiddenFolders.length) return;
-    const mark = () => {
-      for (const doc of this.documents()) {
-        doc.querySelectorAll<HTMLElement>(".nav-folder-title[data-path]").forEach(title => {
-          const path = title.getAttribute("data-path") ?? "";
-          const hidden = this.settings.hiddenFolders.some(folder => path === folder || path.startsWith(`${folder}/`));
-          title.parentElement?.classList.toggle("karpathy-hidden-folder", hidden);
-        });
-      }
-    };
-    mark();
-    this.folderObserver = new MutationObserver(() => {
-      if (this.hideFrame !== undefined) return;
-      this.hideFrame = window.requestAnimationFrame(() => { this.hideFrame = undefined; mark(); });
-    });
-    for (const doc of this.documents()) this.folderObserver.observe(doc.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-path"] });
-    if (!this.hiddenStyle) {
-      this.hiddenStyle = document.head.createEl("style", { text: ".karpathy-hidden-folder { display: none !important; }" });
+    for (const leaf of this.app.workspace.getLeavesOfType("file-explorer")) {
+      const root = leaf.view.containerEl;
+      const mark = () => root.querySelectorAll<HTMLElement>(".nav-folder-title[data-path]").forEach(title => {
+        const path = title.getAttribute("data-path") ?? "";
+        title.parentElement?.classList.toggle("karpathy-hidden-folder", this.settings.hiddenFolders.some(folder => path === folder || path.startsWith(folder + "/")));
+      });
+      mark();
+      const observer = new root.ownerDocument.defaultView!.MutationObserver(mark);
+      observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-path"] });
+      this.folderObservers.push(observer);
     }
   }
 }

@@ -49,6 +49,12 @@ For manual installation, download `main.js`, `manifest.json`, and `styles.css` f
 
 Designed for desktop, iPhone/iPad, and Android. Desktop capture and rescue have been checked in Obsidian; physical mobile testing is still needed. Clipboard support depends on the OS. Live formatting covers common Markdown; advanced tables and callouts render after saving.
 
+## Reliability and diagnostics
+
+Use **Karpathy: Review storage health** to find skipped or renamed entries, duplicate identities, and potentially unused attachments. Restoring an entry path requires confirmation and never overwrites an existing file.
+
+One pane owns each capture/edit draft. Large drafts use source editing; attachments are limited to 50 MiB each. **Fetch pasted URL titles** can be disabled in settings. See [compatibility, performance checks, and limits](docs/compatibility.md).
+
 ## Development
 
 ```sh

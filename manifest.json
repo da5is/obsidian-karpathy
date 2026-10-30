@@ -1,7 +1,7 @@
 {
   "id": "karpathy",
   "name": "Karpathy",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "minAppVersion": "1.8.7",
   "description": "A calm capture stream backed by one Markdown file per entry.",
   "author": "da5is",

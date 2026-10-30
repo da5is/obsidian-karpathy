@@ -5,8 +5,8 @@ import { Decoration, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@cod
 class ImageWidget extends WidgetType {
   constructor(private src: string, private label: string) { super(); }
   eq(other: ImageWidget): boolean { return other.src === this.src && other.label === this.label; }
-  toDOM(): HTMLElement {
-    const image = document.createElement("img");
+  toDOM(view: EditorView): HTMLElement {
+    const image = view.dom.ownerDocument.createElement("img");
     image.src = this.src;
     image.alt = this.label;
     image.className = "karpathy-live-image";
@@ -19,7 +19,7 @@ class TaskWidget extends WidgetType {
   constructor(private checked: boolean, private from: number) { super(); }
   eq(other: TaskWidget): boolean { return other.checked === this.checked && other.from === this.from; }
   toDOM(view: EditorView): HTMLElement {
-    const input = document.createElement("input");
+    const input = view.dom.ownerDocument.createElement("input");
     input.type = "checkbox";
     input.checked = this.checked;
     input.setAttribute("aria-label", "Toggle task");
@@ -45,11 +45,14 @@ export function livePreview(resolveImage?: (link: string) => string | null) {
         this.decorations = this.build(update.view);
     }
     build(view: EditorView) {
+      if (view.state.doc.length > 100000) return Decoration.none;
       const ranges: Range<Decoration>[] = [];
       const excluded: { from: number; to: number }[] = [];
       const selection = view.state.selection;
       const editing = (from: number, to: number) => view.hasFocus && selection.ranges.some(range => range.from <= to && range.to >= from);
+      const fromVisible = view.viewport.from, toVisible = view.viewport.to;
       syntaxTree(view.state).iterate({
+        from: fromVisible, to: toVisible,
         enter(node) {
           if (node.name === "FencedCode" || node.name === "CodeBlock" || node.name === "InlineCode") {
             excluded.push({ from: node.from, to: node.to });
@@ -95,8 +98,8 @@ export function livePreview(resolveImage?: (link: string) => string | null) {
           }
         }
       });
-      for (const match of view.state.doc.toString().matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
-        const from = match.index!;
+      for (const match of view.state.sliceDoc(fromVisible, toVisible).matchAll(/(!?)\[\[([^\]\n]+)\]\]/g)) {
+        const from = fromVisible + match.index!;
         const to = from + match[0].length;
         if (editing(from, to) || excluded.some(range => from < range.to && to > range.from)) continue;
         const [link, alias] = match[2].split("|");

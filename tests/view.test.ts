@@ -465,6 +465,7 @@ test("clipboard files and picker attachments insert at the original cursor and b
   assert.equal(editor.pending, 1);
   assert.match(editor.body, /uploading:/);
   editor.insert("typing while uploading");
+  await until(() => typeof release === "function");
   release(["![[Karpathy/2026/2026-10/attachments/clip.png]]"]);
   await until(() => editor.pending === 0);
   assert.ok(editor.body.includes("typing while uploading"));
@@ -474,6 +475,7 @@ test("clipboard files and picker attachments insert at the original cursor and b
   Object.defineProperty(picker, "files", { configurable: true, value: [new File(["pdf"], "doc.pdf")] });
   picker.dispatchEvent(new Event("change"));
   assert.equal(editor.pending, 1);
+  await new Promise(resolve => setTimeout(resolve, 0));
   release(["[[Karpathy/2026/2026-10/attachments/doc.pdf]]"]);
   await until(() => editor.pending === 0);
   assert.ok(editor.body.includes("doc.pdf"));
@@ -599,4 +601,123 @@ test("cursor failure releases loading and subsequent refresh succeeds", async ()
   assert.equal(view["loading"], false);
   assert.ok(view.contentEl.textContent!.includes("anchor"));
   await view.onClose(); await plugin.store.close();
+});
+
+test("only one capture pane and one entry editor own each persisted draft", async () => {
+  const { app, plugin, view } = fixture();
+  app.workspace.revealLeaf = async () => {};
+  await view.onOpen();
+  view["editor"]!.insert("keep this first draft");
+  const second = new KarpathyView({ app }, plugin);
+  await second.onOpen();
+  assert.equal(second["editor"], undefined);
+  assert.equal(plugin.readDraft(plugin.draftKey())!.body, "keep this first draft");
+  await view.onClose();
+  await second.reconfigure();
+  assert.equal(second["editor"]!.body, "keep this first draft");
+  await second["save"]();
+  await second.refresh(false);
+  second.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+  second.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+  assert.equal(plugin.editing, 1);
+  assert.equal(document.querySelectorAll(".karpathy-edit-modal").length, 1);
+  for (const draft of plugin["draftOwners"].values()) if ("close" in draft.owner) (draft.owner as any).close();
+  await until(() => plugin.editing === 0);
+  await second.onClose(); await plugin.store.close();
+});
+
+test("settings queue preserves overlapping updates and defers synced folder changes around drafts", async () => {
+  const { app, plugin, view } = fixture();
+  let finish!: () => void;
+  let writes = 0;
+  plugin.saveData = async () => { if (++writes === 1) await new Promise<void>(resolve => { finish = resolve; }); };
+  const prefix = plugin.rememberPrefix("work: first");
+  await until(() => !!finish);
+  const sidebar = plugin.setSidebarsHidden(true);
+  finish(); await Promise.all([prefix, sidebar]);
+  assert.equal(plugin.settings.hideSidebars, true);
+  assert.ok(plugin.settings.prefixColors.work);
+  await view.onOpen(); view["editor"]!.insert("draft");
+  plugin.views = () => [view];
+  plugin.loadData = async () => ({ ...plugin.settings, baseFolder: "Synced" });
+  await plugin.onExternalSettingsChange();
+  assert.equal(plugin.settings.baseFolder, "Karpathy");
+  await view["save"]();
+  await plugin.applyPendingSettings();
+  assert.equal(plugin.settings.baseFolder, "Synced");
+  await view.onClose(); await plugin.store.close();
+});
+
+test("draft writes coalesce but close flushes the latest text", async () => {
+  const { app, plugin, view } = fixture();
+  let writes = 0;
+  const save = app.saveLocalStorage.bind(app);
+  app.saveLocalStorage = (key, value) => { writes++; save(key, value); };
+  await view.onOpen();
+  const before = writes;
+  for (let i = 0; i < 20; i++) view["editor"]!.insert("a");
+  assert.equal(writes, before);
+  await view.onClose();
+  assert.equal(app.loadLocalStorage(plugin.draftKey()).body, "a".repeat(20));
+  assert.equal(writes, before + 1);
+  await plugin.store.close();
+});
+
+test("folder hiding observes explorer containers rather than composer mutations", async () => {
+  const { app, plugin } = fixture();
+  const root = document.body.createDiv();
+  const folder = root.createDiv();
+  const title = folder.createDiv({ cls: "nav-folder-title", attr: { "data-path": "Secret" } });
+  const original = root.querySelectorAll.bind(root);
+  let scans = 0;
+  root.querySelectorAll = ((query: string) => { scans++; return original(query); }) as any;
+  app.workspace.getLeavesOfType = ((type: string) => type === "file-explorer" ? [{ view: { containerEl: root } }] : []) as any;
+  plugin.settings.hiddenFolders = ["Secret"];
+  plugin.applyFolderHiding();
+  assert.ok(folder.classList.contains("karpathy-hidden-folder"));
+  const count = scans;
+  const unrelated = document.body.createDiv(); unrelated.createEl("p", { text: "typing" });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(scans, count);
+  title.setAttribute("data-path", "Visible");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.ok(!folder.classList.contains("karpathy-hidden-folder"));
+  plugin.settings.hiddenFolders = []; plugin.applyFolderHiding(); root.remove(); unrelated.remove();
+  await plugin.store.close();
+});
+
+test("closing a saving capture retains ownership until the write finishes", async () => {
+  const { app, plugin, view } = fixture();
+  app.workspace.revealLeaf = async () => {};
+  await view.onOpen(); view["editor"]!.insert("pending write");
+  const capture = plugin.store.capture.bind(plugin.store);
+  let finish!: () => void;
+  plugin.store.capture = async (...args) => { await new Promise<void>(resolve => { finish = resolve; }); return capture(...args); };
+  const saving = view["save"]();
+  await until(() => !!finish);
+  await view.onClose();
+  const second = new KarpathyView({ app }, plugin); await second.onOpen();
+  assert.equal(second["editor"], undefined);
+  finish(); await saving; await new Promise(resolve => setTimeout(resolve, 0));
+  await second.reconfigure();
+  assert.equal(second["editor"]!.body, "");
+  second["editor"]!.insert("new draft survives");
+  await second.onClose();
+  assert.equal(plugin.readDraft(plugin.draftKey())!.body, "new draft survives");
+  await plugin.store.close();
+});
+
+test("links from a different DOM realm remain clickable after window migration", async () => {
+  const { JSDOM } = await import("jsdom");
+  const foreign = new JSDOM("<a class='internal-link' data-href='Target.md'>Target</a>");
+  const { plugin, view } = fixture();
+  let opened = "";
+  plugin.openStreamLink = async link => { opened = link; };
+  await plugin.store.capture("ordinary body", new Date(), "realm");
+  await view.onOpen();
+  const link = foreign.window.document.querySelector("a")!;
+  view.contentEl.querySelector(".karpathy-entry-content")!.appendChild(link);
+  link.dispatchEvent(new foreign.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  assert.equal(opened, "Target.md");
+  await view.onClose(); await plugin.store.close(); foreign.window.close();
 });

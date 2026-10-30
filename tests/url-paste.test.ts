@@ -231,3 +231,24 @@ test("mobile paste works in capture and Edit, saving normal Markdown with an emp
     assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].body, "[A useful article](https://example.com/edited)");
   } finally { await stream.onClose(); Platform.isDesktopApp = true; }
 });
+
+test("title requests remain capped after UI lookups expire and disabling titles makes no request", async () => {
+  const completions: ((value: any) => void)[] = [];
+  urlRequests.respond = () => new Promise(resolve => completions.push(resolve));
+  const host = document.body.createDiv();
+  const view = new EditorView({ parent: host, state: EditorState.create({ extensions: [urlPaste(1)] }) });
+  try {
+    for (let i = 0; i < 12; i++) { paste(view, `https://example.com/${i}`); await settled(); }
+    assert.equal(urlRequests.calls.length, 4);
+  } finally {
+    view.destroy(); host.remove();
+    completions.forEach(resolve => resolve(response("<title>late</title>")));
+    await settled();
+  }
+  const second = document.body.createDiv();
+  const disabled = new EditorView({ parent: second, state: EditorState.create({ extensions: [urlPaste(1, () => false)] }) });
+  paste(disabled, url); await settled();
+  assert.equal(disabled.state.doc.toString(), url);
+  assert.equal(urlRequests.calls.length, 4);
+  disabled.destroy(); second.remove();
+});

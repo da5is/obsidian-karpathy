@@ -284,3 +284,5 @@ body.karpathy-hide-sidebars .workspace-drawer-backdrop {
 @media (prefers-reduced-motion: reduce) {
   .karpathy-view *, .karpathy-edit-modal * { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.karpathy-hidden-folder { display: none !important; }

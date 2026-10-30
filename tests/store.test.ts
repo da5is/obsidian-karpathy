@@ -203,3 +203,13 @@ test("failed writes and occupied paths preserve data and permit retry", async ()
   await assert.rejects(() => store.capture("draft", date, "blocked"), /folder occupies/);
   await store.close();
 });
+
+test("oversized attachments reject before allocating their contents", async () => {
+  const app = new App(), store = new Store(app as any, "Karpathy");
+  let allocated = false;
+  const large = { name: "large.bin", size: 51 * 1024 * 1024, type: "application/octet-stream", arrayBuffer: async () => { allocated = true; return new ArrayBuffer(0); } } as File;
+  await assert.rejects(store.attachment(large, new Date()), /50 MiB/);
+  assert.equal(allocated, false);
+  assert.equal(app.vault.getFiles().length, 0);
+  await store.close();
+});

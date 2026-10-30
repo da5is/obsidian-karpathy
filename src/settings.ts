@@ -4,6 +4,7 @@ import { baseFolder } from "./model";
 
 export interface Settings {
   baseFolder: string;
+  fetchUrlTitles: boolean;
   openOnStartup: boolean;
   hideSidebars: boolean;
   hiddenFolders: string[];
@@ -19,9 +20,9 @@ export function themePrefixColor(prefix: string): string {
 function resolvedHex(parent: HTMLElement, color: string): string {
   const probe = parent.createSpan();
   probe.style.color = color;
-  const resolved = getComputedStyle(probe).color;
+  const resolved = parent.ownerDocument.defaultView!.getComputedStyle(probe).color;
   probe.remove();
-  const canvas = document.createElement("canvas");
+  const canvas = parent.ownerDocument.createElement("canvas");
   canvas.width = canvas.height = 1;
   const context = canvas.getContext("2d");
   if (!context) return "#808080";
@@ -32,6 +33,7 @@ function resolvedHex(parent: HTMLElement, color: string): string {
 
 export const DEFAULT_SETTINGS: Settings = {
   baseFolder: "Karpathy",
+  fetchUrlTitles: true,
   openOnStartup: true,
   hideSidebars: false,
   hiddenFolders: [],
@@ -53,6 +55,7 @@ export function parseSettings(input: unknown): Settings {
   if (typeof value.baseFolder === "string") folder = baseFolder(value.baseFolder);
   return {
     baseFolder: folder,
+    fetchUrlTitles: value.fetchUrlTitles !== false,
     openOnStartup: typeof value.openOnStartup === "boolean" ? value.openOnStartup : true,
     hideSidebars: value.hideSidebars === true,
     hiddenFolders: Array.isArray(value.hiddenFolders) ? value.hiddenFolders.filter((p): p is string => typeof p === "string").map(baseFolder).filter(Boolean) : [],
@@ -76,11 +79,15 @@ export class KarpathySettingsTab extends PluginSettingTab {
         if (!input) return;
         void this.plugin.changeBase(input.value).catch(error => this.plugin.report(error));
       }));
+    new Setting(containerEl).setName("Fetch pasted URL titles")
+      .setDesc("Contact pasted websites to turn URLs into titled links. Disable to keep plain URLs without a request.")
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.fetchUrlTitles).onChange(value => {
+        void this.plugin.updateSettings(next => { next.fetchUrlTitles = value; }).catch(error => this.plugin.report(error));
+      }));
     new Setting(containerEl).setName("Open stream on startup")
       .setDesc("Reuse a stream tab without closing other notes.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.openOnStartup).onChange(async value => {
-        this.plugin.settings.openOnStartup = value;
-        await this.plugin.persistSettings();
+        await this.plugin.updateSettings(next => { next.openOnStartup = value; });
       }));
     new Setting(containerEl).setName("Hide sidebars")
       .setDesc("Hide both sidebars and the left ribbon throughout this vault. Use Karpathy: Toggle hidden sidebars in the command palette to restore them.")
@@ -95,8 +102,8 @@ export class KarpathySettingsTab extends PluginSettingTab {
         text.inputEl.addEventListener("blur", () => {
           void (async () => {
             try {
-              this.plugin.settings.hiddenFolders = text.getValue().split(/\r?\n/).filter(p => p.trim()).map(baseFolder).filter(Boolean);
-              await this.plugin.persistSettings();
+              const folders = text.getValue().split(/\r?\n/).filter(p => p.trim()).map(baseFolder).filter(Boolean);
+              await this.plugin.updateSettings(next => { next.hiddenFolders = folders; });
               this.plugin.applyFolderHiding();
             } catch (error) { this.plugin.report(error); }
           })();
@@ -107,12 +114,10 @@ export class KarpathySettingsTab extends PluginSettingTab {
     for (const [prefix, color] of Object.entries(this.plugin.settings.prefixColors)) {
       const setting = new Setting(containerEl).setName(`${prefix}:`).setDesc(color.startsWith("var(") ? "Using the current theme" : "Custom color override");
       setting.addColorPicker(picker => picker.setValue(color.startsWith("#") ? color : resolvedHex(containerEl, color)).onChange(async value => {
-        this.plugin.settings.prefixColors[prefix] = value;
+        await this.plugin.updateSettings(next => { next.prefixColors[prefix] = value; });
         setting.setDesc("Custom color override");
-        await this.plugin.persistSettings();
       })).addButton(button => button.setButtonText("Use theme").onClick(async () => {
-        this.plugin.settings.prefixColors[prefix] = themePrefixColor(prefix);
-        await this.plugin.persistSettings();
+        await this.plugin.updateSettings(next => { next.prefixColors[prefix] = themePrefixColor(prefix); });
         this.display();
       }));
     }
@@ -120,8 +125,8 @@ export class KarpathySettingsTab extends PluginSettingTab {
     new Setting(containerEl).setName("Add a prefix").addText(text => text.setPlaceholder("work").onChange(value => { newPrefix = value.trim().toLowerCase().replace(/:$/, ""); }))
       .addButton(button => button.setButtonText("Add").onClick(async () => {
         if (!/^[a-z][\w-]*$/.test(newPrefix)) { new Notice("Use a word such as work, without spaces."); return; }
-        this.plugin.settings.prefixColors[newPrefix] = themePrefixColor(newPrefix);
-        await this.plugin.persistSettings();
+        const prefix = newPrefix;
+        await this.plugin.updateSettings(next => { next.prefixColors[prefix] = themePrefixColor(prefix); });
         this.display();
       }));
   }

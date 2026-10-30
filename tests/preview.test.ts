@@ -38,3 +38,16 @@ test("Setext headings use their native theme level and keep their source intact"
     assert.equal(editor.body, body);
   } finally { await close(); }
 });
+
+test("large drafts use source mode and retain exact text through threshold crossings", async () => {
+  const body = "x".repeat(100001);
+  const { editor, host, close } = fixture(body);
+  try {
+    assert.equal(editor.body, body);
+    assert.ok(!host.querySelector(".cm-lineWrapping"));
+    editor.setBody("# Small again");
+    assert.ok(host.querySelector(".cm-lineWrapping"));
+    assert.ok(host.querySelector(".HyperMD-header-1"));
+    assert.equal(editor.body, "# Small again");
+  } finally { await close(); }
+});

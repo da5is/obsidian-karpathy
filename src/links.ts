@@ -31,6 +31,21 @@ export class WikilinkIndex {
   private records = new Map<string, Candidate[]>();
   private indexed = false;
   private revision = 0;
+  private building?: Promise<void>;
+  private async ensureIndexed(): Promise<void> {
+    if (this.indexed) return;
+    if (!this.building) this.building = (async () => {
+      const revision = this.revision;
+      const files = this.app.vault.getFiles();
+      for (let i = 0; i < files.length; i += 256) {
+        if (revision !== this.revision) return;
+        for (const file of files.slice(i, i + 256)) if (this.app.vault.getAbstractFileByPath(file.path) === file) this.add(file);
+        if (i + 256 < files.length) await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      if (revision === this.revision) this.indexed = true;
+    })().finally(() => { this.building = undefined; });
+    await this.building;
+  }
 
   constructor(private app: App) {}
 
@@ -41,13 +56,14 @@ export class WikilinkIndex {
   }
 
   changed(file: TAbstractFile, oldPath?: string): void {
-    if (!this.indexed) return;
+    if (!this.indexed) { if (this.building) this.clear(); return; }
     // Folder moves can change many child paths with a single vault event.
     if (!(file instanceof TFile)) { this.clear(); return; }
+    const previous = JSON.stringify(this.records.get(file.path));
     if (oldPath) this.records.delete(oldPath);
     this.records.delete(file.path);
     if (this.app.vault.getAbstractFileByPath(file.path) === file) this.add(file);
-    this.revision++;
+    if (oldPath || previous !== JSON.stringify(this.records.get(file.path))) this.revision++;
   }
 
   private add(file: TFile): void {
@@ -67,18 +83,18 @@ export class WikilinkIndex {
     let revision = -1;
     let matchPaths = false;
     let options: Completion[] = [];
-    return (context: CompletionContext) => {
+    return async (context: CompletionContext) => {
       const range = wikilinkRange(context.state, context.pos);
       if (!range) return null;
-      if (!this.indexed) {
-        for (const file of this.app.vault.getFiles()) this.add(file);
-        this.indexed = true;
-      }
+      await this.ensureIndexed();
+      if (!this.indexed || context.aborted) return null;
       const paths = context.state.sliceDoc(range.from, context.pos).includes("/");
       if (revision !== this.revision || paths !== matchPaths) {
-        revision = this.revision;
-        matchPaths = paths;
-        options = Array.from(this.records.values()).flat().map(candidate => ({
+        const buildRevision = this.revision;
+        const built: Completion[] = [];
+        let count = 0;
+        for (const candidates of this.records.values()) for (const candidate of candidates) {
+          built.push({
           label: paths ? candidate.label : candidate.display,
           displayLabel: candidate.display,
           detail: candidate.path,
@@ -98,7 +114,13 @@ export class WikilinkIndex {
             });
             view.focus();
           }
-        }));
+          });
+          if (++count % 256 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            if (context.aborted || buildRevision !== this.revision) return null;
+          }
+        }
+        revision = buildRevision; matchPaths = paths; options = built;
       }
       const resultRevision = revision;
       return {

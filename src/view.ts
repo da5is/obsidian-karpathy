@@ -20,6 +20,7 @@ function rescueHistory(entry: Entry): string {
 
 export class KarpathyView extends ItemView {
   private editor?: CaptureEditor;
+  private editorClosing?: Promise<void>;
   private draft: Draft | null = null;
   private draftKey = "";
   private saveButton!: HTMLButtonElement;
@@ -55,10 +56,13 @@ export class KarpathyView extends ItemView {
   getDisplayText(): string { return "Karpathy"; }
   getIcon(): string { return "notebook-pen"; }
   get hasDraft(): boolean { return this.saving || !!this.editor?.pending || !!this.editor?.body.trim(); }
+  indexProgress(remaining: number, total: number): void {
+    if (remaining && !this.closed && this.subtitle) this.subtitle.setText(`Indexing ${total - remaining} of ${total} notes…`);
+  }
   focusComposer(): void { this.editor?.focus(); }
   attachFiles(photosOnly = false): void {
     if (this.saving || this.closed) return;
-    const picker = document.createElement("input");
+    const picker = this.contentEl.ownerDocument.createElement("input");
     picker.type = "file";
     picker.multiple = true;
     if (photosOnly) picker.accept = "image/*";
@@ -164,12 +168,22 @@ export class KarpathyView extends ItemView {
   private createEditor(capture: HTMLElement): void {
     const base = this.plugin.settings.baseFolder;
     this.draftKey = this.plugin.draftKey();
+    if (!this.plugin.claimDraft(this.draftKey, this, () => { void this.app.workspace.revealLeaf(this.leaf).then(() => this.focusComposer()); })) {
+      const host = capture.createDiv({ cls: "karpathy-editor" });
+      host.createEl("p", { text: "A capture is already open in another pane." });
+      host.createEl("button", { text: "Use active capture" }).addEventListener("click", () => {
+        void this.reconfigure().catch(error => this.plugin.report(error));
+      });
+      this.updateCaptureStatus();
+      return;
+    }
     this.draft = this.plugin.readDraft(this.draftKey);
     const host = capture.createDiv({ cls: "karpathy-editor" });
     this.editor = new CaptureEditor(host, {
       body: this.draft?.body ?? "",
       colors: this.plugin.settings.prefixColors,
       tripleEnter: true,
+      fetchTitles: () => this.plugin.settings.fetchUrlTitles,
       completeLink: this.plugin.links.source(() => entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
       resolveImage: link => this.plugin.imageSource(link, entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
       change: body => {
@@ -196,9 +210,10 @@ export class KarpathyView extends ItemView {
   private updateCaptureStatus(): void {
     const uploading = !!this.editor?.pending;
     this.saveButton.disabled = this.saving || uploading || !this.editor?.body.trim();
-    for (const button of this.attachmentButtons) button.disabled = this.saving;
-    this.captureStatus.setText(this.saving ? "Saving..." : uploading ? "Saving attachments..." : "");
-    this.captureStatus.hidden = !this.saving && !uploading;
+    for (const button of this.attachmentButtons) button.disabled = this.saving || !this.editor;
+    const large = (this.editor?.view.state.doc.length ?? 0) > 100000;
+    this.captureStatus.setText(this.saving ? "Saving..." : uploading ? "Saving attachments..." : large ? "Large draft: source editing, without line wrapping." : "");
+    this.captureStatus.hidden = !this.saving && !uploading && !large;
   }
 
   private async save(): Promise<void> {
@@ -226,11 +241,14 @@ export class KarpathyView extends ItemView {
       this.editor.lock(false);
       this.updateCaptureStatus();
       if (!this.closed) this.editor.focus();
+      else void this.editorClosing?.then(() => this.plugin.releaseDraft(this.draftKey, this));
     }
   }
 
   async reconfigure(): Promise<void> {
     if (this.editor) await this.editor.destroy();
+    this.editor = undefined;
+    this.plugin.releaseDraft(this.draftKey, this);
     const capture = this.contentEl.querySelector<HTMLElement>(".karpathy-capture");
     if (!capture) return;
     capture.querySelector(".karpathy-editor")?.remove();
@@ -322,7 +340,14 @@ export class KarpathyView extends ItemView {
       } while (!exhausted && found.length < limit && valid());
       if (direction === 1) { this.after = cursor; this.endReached = exhausted; this.items = [...previous.items, ...found]; }
       else { this.before = cursor; this.startReached = exhausted; this.items = [...found, ...previous.items]; }
-      if (this.items.length > WINDOW_SIZE) {
+      const entryBytes = (entry: Entry) => ((entry.source?.length ?? 0) + entry.body.length) * 2;
+      let bytes = this.items.reduce((sum, entry) => sum + entryBytes(entry), 0);
+      let memoryTrimmed = false;
+      while (bytes > 8 * 1024 * 1024 && this.items.length > 1) {
+        const removed = direction === 1 ? this.items.shift()! : this.items.pop()!;
+        bytes -= entryBytes(removed); memoryTrimmed = true;
+      }
+      if (this.items.length > WINDOW_SIZE || memoryTrimmed) {
         this.items = direction === 1 ? this.items.slice(-WINDOW_SIZE) : this.items.slice(0, WINDOW_SIZE);
         if (direction === 1) {
           this.before = await this.plugin.store.cursorFor(this.items[0]);
@@ -438,12 +463,20 @@ export class KarpathyView extends ItemView {
           menu.showAtMouseEvent(event);
         });
         const content = surface.createDiv({ cls: "karpathy-entry-content markdown-rendered" });
-        try { await MarkdownRenderer.render(this.app, entry.body, content, entry.path, component); }
+        try {
+          if (entry.body.length > 100000) {
+            content.createEl("p", { text: entry.body.slice(0, 10000) + "…" });
+            content.createEl("button", { text: "Open full note" }).addEventListener("click", () => {
+              void this.app.workspace.openLinkText(entry.path, entry.path, "tab").catch(error => this.plugin.report(error));
+            });
+          } else await MarkdownRenderer.render(this.app, entry.body, content, entry.path, component);
+        }
         catch (error) { this.removeChild(component); throw error; }
         if (!valid()) { this.removeChild(component); return; }
         content.addEventListener("click", event => {
-          if (!(event.target instanceof Element)) return;
-          const link = event.target.closest<HTMLAnchorElement>("a.internal-link");
+          const target = event.target as Element | null;
+          if (!target || target.nodeType !== 1 || typeof target.closest !== "function") return;
+          const link = target.closest<HTMLAnchorElement>("a.internal-link");
           if (!link) return;
           const href = link.getAttribute("data-href") ?? link.getAttribute("href");
           if (!href) return;
@@ -503,13 +536,21 @@ export class KarpathyView extends ItemView {
     this.closed = true;
     this.generation++;
     window.clearTimeout(this.searchTimer);
-    await this.editor?.destroy();
+    this.editorClosing = this.editor?.destroy() ?? Promise.resolve();
+    await this.editorClosing;
+    if (!this.saving) this.plugin.releaseDraft(this.draftKey, this);
     for (const row of this.rows.values()) this.removeChild(row.component);
     this.rows.clear();
   }
 }
 
 class EntryEditor extends Modal {
+  private destroyed = false;
+  private released = false;
+  private finishClose(): void {
+    if (!this.closed || !this.destroyed || this.saving || this.released) return;
+    this.released = true; this.plugin.editing--; this.plugin.releaseDraft(this.key, this);
+  }
   private editor?: CaptureEditor;
   private draft: Draft;
   private key: string;
@@ -525,6 +566,7 @@ class EntryEditor extends Modal {
     this.draft = plugin.readDraft(this.key) ?? { body: entry.body, timestamp: entry.timestamp, id: entry.id, original: entry };
   }
   onOpen(): void {
+    if (!this.plugin.claimDraft(this.key, this, () => this.editor?.focus())) { this.closed = true; this.close(); return; }
     this.closed = false;
     this.plugin.editing++;
     this.modalEl.addClass("karpathy-edit-modal");
@@ -589,12 +631,13 @@ class EntryEditor extends Modal {
       this.saving = false;
       this.button.disabled = false;
       this.editor.lock(false);
+      this.finishClose();
     }
   }
   onClose(): void {
     if (this.closed) return;
     this.closed = true;
-    void (this.editor?.destroy() ?? Promise.resolve()).then(() => { this.plugin.editing--; }).catch(error => this.plugin.report(error));
+    void (this.editor?.destroy() ?? Promise.resolve()).then(() => { this.destroyed = true; this.finishClose(); }).catch(error => this.plugin.report(error));
   }
 }
 

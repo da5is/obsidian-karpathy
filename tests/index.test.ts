@@ -115,3 +115,45 @@ test("warm page reads retain ordering and reconciliation repairs offline same-st
   assert.equal(store.files, ordering);
   await store.close();
 });
+
+test("cache schema upgrade preserves stream rows and adds independent link storage", async () => {
+  const app = new App();
+  const name = "karpathy-index-upgrade-test";
+  app.saveLocalStorage("karpathy:index-database:v2", name);
+  const record = { path: "old.md", mtime: 1, size: 3, id: "old", timestamp: "2026-10-30T12:00:00.000Z" };
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(name, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("metadata", { keyPath: "path" }).put(record);
+      request.result.createObjectStore("search", { keyPath: "path" }).put({ ...record, text: "old" });
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => { request.result.close(); resolve(); };
+  });
+  const index = new LocalIndex(app as any);
+  assert.deepEqual(await index.records(), [record]);
+  assert.equal(await index.text("old.md", 1, 3), "old");
+  await index.updateLinks([{ path: "old.md", value: { path: "old.md", candidates: [] } }]);
+  await index.clear();
+  assert.equal((await index.linkRecords()).length, 1);
+  await index.close();
+});
+
+test("cold indexing persists batches rather than a transaction per file", async context => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (let i = 0; i < 65; i++) await app.vault.create(entryPath("Karpathy", date, `batch-${i}`), serializeEntry(`batch-${i}`, date.toISOString(), "body"));
+  const sizes: number[] = [];
+  const putMany = LocalIndex.prototype.putMany;
+  context.mock.method(LocalIndex.prototype, "putMany", async function(this: LocalIndex, values: Parameters<LocalIndex["putMany"]>[0]) {
+    sizes.push(values.length); return putMany.call(this, values);
+  });
+  const store = new Store(app as any, "Karpathy");
+  assert.equal(await store.countEntries(), 65);
+  assert.deepEqual(sizes, [32, 32, 1]);
+  await store.close();
+  const warm = new Store(app as any, "Karpathy");
+  const reads = app.vault.reads;
+  assert.equal(await warm.countEntries(), 65);
+  assert.equal(app.vault.reads, reads);
+  await warm.close();
+});

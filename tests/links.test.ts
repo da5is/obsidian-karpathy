@@ -1,6 +1,8 @@
+import "fake-indexeddb/auto";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { App, closeDOM, TFolder } from "./obsidian-mock";
@@ -98,4 +100,79 @@ test("a warm index reuses suggestions for a large vault", async () => {
   assert.equal(app.cacheReads, reads);
   assert.equal(app.vault.listings, 1);
   assert.equal(app.vault.reads, 0);
+});
+
+test("prewarmed suggestions are shared by editors and restored from device-local storage", async () => {
+  const app = new App();
+  const file = await app.vault.create("Reference/Note.md", "body");
+  app.fileCaches.set(file.path, { frontmatter: { aliases: ["Alias"] } });
+  const first = new WikilinkIndex(app as any);
+  await first.prepare();
+  const one = (await first.source(() => "one.md")(context("[[")))!;
+  const two = (await first.source(() => "two.md")(context("[[")))!;
+  assert.equal(one.options, two.options);
+  await first.close();
+  const reads = app.cacheReads;
+  const second = new WikilinkIndex(app as any);
+  await second.prepare();
+  assert.equal(app.cacheReads, reads);
+  assert.ok((await second.source(() => "other.md")(context("[[")))!.options.some(option => option.label === "Alias"));
+  app.fileCaches.set(file.path, { frontmatter: { aliases: ["Changed offline"] } });
+  await second.reconcile();
+  const latest = (await second.source(() => "other.md")(context("[[")))!;
+  assert.ok(latest.options.some(option => option.label === "Changed offline"));
+  assert.ok(!latest.options.some(option => option.label === "Alias"));
+  await second.close();
+});
+
+test("persisted link records prune deletions and refresh stat changes without reading note bodies", async () => {
+  const app = new App();
+  const removed = await app.vault.create("Removed.md", "body");
+  const changed = await app.vault.create("Changed.md", "body");
+  const first = new WikilinkIndex(app as any); await first.prepare(); await first.close();
+  app.vault.files.delete(removed.path);
+  changed.stat.mtime++;
+  app.fileCaches.set(changed.path, { frontmatter: { aliases: ["Updated"] } });
+  const second = new WikilinkIndex(app as any); await second.prepare();
+  const options = (await second.source(() => "draft.md")(context("[[")))!.options;
+  assert.ok(!options.some(option => option.label === "Removed"));
+  assert.ok(options.some(option => option.label === "Updated"));
+  assert.equal(app.vault.reads, 0);
+  await second.close();
+});
+
+test("shared options apply relative to the invoking editor's current source path", async () => {
+  const app = new App();
+  await app.vault.create("Reference/Note.md", "body");
+  const index = new WikilinkIndex(app as any);
+  const first = new EditorView({ state: context("[[No").state, parent: document.body });
+  const second = new EditorView({ state: context("[[No").state, parent: document.body });
+  let path = "First.md";
+  try {
+    const one = (await index.source(() => path)(new CompletionContext(first.state, 4, true, first)))!;
+    const two = (await index.source(() => "Second.md")(new CompletionContext(second.state, 4, true, second)))!;
+    assert.equal(one.options, two.options);
+    path = "Renamed.md";
+    const choice = one.options[0];
+    assert.equal(typeof choice.apply, "function");
+    (choice.apply as Function)(second, choice, 2, 4);
+    (choice.apply as Function)(first, choice, 2, 4);
+    assert.deepEqual(app.linkRequests.map(request => request.source), ["Second.md", "Renamed.md"]);
+    assert.equal(first.state.doc.toString(), "[[Note]]");
+  } finally { first.destroy(); second.destroy(); await index.close(); }
+});
+
+test("metadata-only reconciliation is shared and body edits retain prepared options", async () => {
+  const app = new App();
+  const file = await app.vault.create("Note.md", "body");
+  const index = new WikilinkIndex(app as any);
+  const source = index.source(() => "draft.md");
+  const before = (await source(context("[[")))!.options;
+  file.stat.mtime++;
+  index.changed(file);
+  assert.equal((await source(context("[[")))!.options, before);
+  const listings = app.vault.listings;
+  await Promise.all([index.reconcile(), index.reconcile(), index.reconcile()]);
+  assert.equal(app.vault.listings, listings + 1);
+  await index.close();
 });

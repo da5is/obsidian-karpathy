@@ -8,6 +8,7 @@ export class Store {
   private cache = new LruCache<string, CachedFile>(512, 8 * 1024 * 1024);
   private searchCache = new LruCache<string, string>(2048, 8 * 1024 * 1024);
   private records = new Map<string, IndexRecord>();
+  private pendingIndex = new Map<string, { record: IndexRecord; text: string }>();
   private candidates = new Map<string, TFile>();
   private dirty = new Set<string>();
   private epochs = new Map<string, number>();
@@ -35,8 +36,9 @@ export class Store {
       for (let i = 0; i < files.length && !this.closed; i += 8) {
         await Promise.all(files.slice(i, i + 8).map(file => {
           this.cache.delete(file.path);
-          return this.entries(file);
+          return this.entries(file, false);
         }));
+        await this.flushIndex();
         if (i + 8 < files.length) await new Promise(resolve => setTimeout(resolve, 20));
       }
       if (all) this.lastVerification = Date.now();
@@ -141,6 +143,7 @@ export class Store {
     await this.initial;
     if (!this.rebuilding) {
       this.rebuilding = (async () => {
+        let yielded = performance.now();
         while (this.dirty.size && !this.closed) {
           this.onProgress?.(this.dirty.size, this.candidates.size);
           const paths: string[] = [];
@@ -148,10 +151,13 @@ export class Store {
           for (let i = 0; i < paths.length; i += 8) {
             await Promise.all(paths.slice(i, i + 8).map(async path => {
               const file = this.candidates.get(path);
-              if (file) await this.entries(file); else this.dirty.delete(path);
+              if (file) await this.entries(file, false); else this.dirty.delete(path);
             }));
           }
-          if (this.dirty.size) await new Promise(resolve => setTimeout(resolve, 0));
+          await this.flushIndex();
+          if (this.dirty.size && performance.now() - yielded > 8) {
+            await new Promise(resolve => setTimeout(resolve, 0)); yielded = performance.now();
+          }
         }
       })().finally(() => { this.rebuilding = undefined; this.onProgress?.(0, this.candidates.size); });
     }
@@ -161,7 +167,13 @@ export class Store {
     await this.ready();
     return valid() ? this.files.length : null;
   }
-  private async remember(file: TFile, text: string, epoch: number, mtime: number, size: number): Promise<Entry[]> {
+  private async flushIndex(): Promise<void> {
+    const values = [...this.pendingIndex.values()].filter(value => this.records.get(value.record.path) === value.record && !this.dirty.has(value.record.path));
+    this.pendingIndex.clear();
+    await this.index.putMany(values);
+    for (const { record } of values) if (this.records.get(record.path) !== record || this.dirty.has(record.path)) await this.index.remove(record.path);
+  }
+  private async remember(file: TFile, text: string, epoch: number, mtime: number, size: number, persist = true): Promise<Entry[]> {
     const entries = parseEntries(text, file.path);
     if ((this.epochs.get(file.path) ?? 0) !== epoch || this.app.vault.getAbstractFileByPath(file.path) !== file ||
         file.stat.mtime !== mtime || file.stat.size !== size) return entries;
@@ -175,16 +187,17 @@ export class Store {
     this.dirty.delete(file.path);
     this.cache.set(file.path, { mtime, size, entries }, text.length * 4 + 256);
     this.searchCache.set(file.path, search, search.length * 2 + 128);
-    await this.index.put(record, search);
+    if (persist) await this.index.put(record, search);
+    else this.pendingIndex.set(file.path, { record, text: search });
     return entries;
   }
-  async entries(file: TFile): Promise<Entry[]> {
+  async entries(file: TFile, persist = true): Promise<Entry[]> {
     await this.initial;
     const cached = this.cache.get(file.path);
     if (!this.dirty.has(file.path) && cached && cached.mtime === file.stat.mtime && cached.size === file.stat.size) return cached.entries;
     const epoch = this.epochs.get(file.path) ?? 0;
     const { mtime, size } = file.stat;
-    try { return await this.remember(file, await this.app.vault.read(file), epoch, mtime, size); }
+    try { return await this.remember(file, await this.app.vault.read(file), epoch, mtime, size, persist); }
     catch {
       if ((this.epochs.get(file.path) ?? 0) === epoch) {
         this.failures.set(file.path, Date.now());
@@ -228,7 +241,7 @@ export class Store {
     const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
     let scanned = 0;
     while (valid() && found.length < limit && scanned < 256 && (direction === 1 ? position < snapshot.length : position > 0)) {
-      const amount = Math.min(terms.length ? 64 : Math.min(8, limit - found.length), 256 - scanned, direction === 1 ? snapshot.length - position : position);
+      const amount = Math.min(terms.length ? 256 : Math.min(8, limit - found.length), 256 - scanned, direction === 1 ? snapshot.length - position : position);
       const batch = Array.from({ length: amount }, (_, i) => snapshot[direction === 1 ? position + i : position - 1 - i]);
       const texts = terms.length ? await this.searchTexts(batch) : undefined;
       if (!valid()) break;

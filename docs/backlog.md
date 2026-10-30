@@ -15,6 +15,17 @@ probes reproduce KAR-001 through KAR-007. These probes use in-memory vaults and
 fake IndexedDB; no user notes were changed. Passing existing tests does not cover
 the failure cases below.
 
+## Performance follow-up — 2.2.0
+
+Persistent wikilink records, startup preparation, and shared completion options
+address the measured first-suggestion/editor-recreation cost in KAR-008.
+Time-budgeted yielding and batched index writes/search reads reduce index and
+search overhead. Regression tests cover schema upgrades, warm restoration,
+alias/deletion freshness, multi-editor link targets, and bounded index batches.
+See [updated measurements](compatibility.md). Large-vault physical-device peak
+memory/latency, cold disk variability, CodeMirror filtering/paint cost, and the
+existing device/sync matrix remain validation work, not claimed fixed.
+
 ## Delivery status — 2.1.0
 
 KAR-001, KAR-007, KAR-013 and KAR-015 have code fixes and regression coverage.

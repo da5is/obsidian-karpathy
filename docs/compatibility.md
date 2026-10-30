@@ -1,17 +1,17 @@
 # Compatibility and performance checks
 
-Release: 2.1.0. All timing values below are milliseconds.
+Release: 2.2.0. All timing values below are milliseconds.
 
 ## Automated and desktop coverage
 
-107 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+113 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test
 packages are not proof of compatibility with every Obsidian runtime version.
 
 The plugin minimum remains Obsidian 1.8.7. The unnecessary regex-lookbehind
-requirement was removed. Native desktop checks use Obsidian 1.14.5 on Windows: plugin reload and the completed storage-health report in the clean development vault.
+requirement was removed. Previous 2.1.0 native desktop checks used Obsidian 1.14.5 on Windows: plugin reload and the completed storage-health report in the clean development vault. This release adds automated cache and multi-editor completion checks; it does not add a new native-device validation run.
 Minimum-version Obsidian, macOS/Linux, physical iPhone/iPad/Android, OneDrive
 conflict resolution, and mobile trash restoration still require a device matrix
 run. Do not describe those platforms as newly verified by these tests.
@@ -25,17 +25,49 @@ p95 for three trials is just the maximum observed, not a statistically robust
 latency estimate. OS filesystem caches were not forcibly flushed. No network,
 mobile rendering, or OneDrive downloads are included.
 
-| Entries | Cold index p50 / p95 | Warm count p50 / p95 | Page p50 / p95 | Sparse search p50 / p95 | First completion |
-| --- | --- | --- | --- | --- | --- |
-| 1,000 | 652 / 672 | 6 / 7 | 5 / 21 | 6 / 10 | 94 |
-| 10,000 | 5,272 / 5,328 | 48 / 52 | 4 / 8 | 73 / 89 | 781 |
-| 50,000 | 35,388 / 38,682 | 411 / 422 | 6 / 11 | 764 / 795 | 4,867 |
+| Entries | Cold index p50 / p95 | Warm count p50 / p95 | Page p50 / p95 | Sparse search p50 / p95 |
+| --- | --- | --- | --- | --- |
+| 1,000 | 505 / 1,636 | 6 / 7 | 6 / 11 | 7 / 8 |
+| 10,000 | 5,504 / 15,221 | 46 / 47 | 5 / 8 | 75 / 77 |
+| 50,000 | 28,388 / 66,225 | 201 / 223 | 4 / 12 | 411 / 443 |
 
-Completion construction yields in batches of 256, so its elapsed time includes
-yields. Warm completions reuse options; ordinary body-only changes no longer
-invalidate the option list. Cold index loading shows progress and preserves
-correct rescue ordering rather than presenting an incorrectly ordered partial
-stream. Warm cached results load before the background content check.
+At 50k, the previous 2.1.0 median cold index was 35,388 ms and sparse search
+764 ms. Cold filesystem results are noisy: the new worst run is slower than the
+previous 38,682 ms. Do not infer a guaranteed disk or OneDrive speedup.
+Cold indexing still reads authoritative files to preserve rescue ordering.
+Warm cached results load before the background content check.
+
+## Wikilink preparation
+
+Single preparation/query measurements using the same mocked host and fake
+IndexedDB. These measure the completion source, not CodeMirror filtering,
+layout, or paint time. There are no Markdown-body reads for suggestions.
+
+| Vault files | Cold preparation | Cache restore + preparation | Prepared query | New editor after restore |
+| --- | --- | --- | --- | --- |
+| 1,000 | 2.6 | 4.4 | 0.5 | 0.2 |
+| 10,000 | 28.1 | 47.7 | 0.2 | 0.2 |
+| 50,000 | 310.9 | 421.9 | 0.2 | 0.3 |
+
+The previous 50k first-source request took 4,867 ms. Preparation now starts after
+layout readiness and yields based on elapsed work, instead of paying a timer
+pause for every 256 files. Names/path options are shared across editors.
+Saved file/alias records survive restart; completion functions are recreated.
+Startup still enumerates file stats and checks host metadata for offline alias
+changes. Opening completion before preparation finishes waits for that work.
+Body-only modifications do not rebuild the options. Missing IndexedDB falls
+back to host metadata; the cache is never required to create a link.
+
+## Real IndexedDB check
+
+Headless Edge, 50k short entries, real IndexedDB and simulated in-memory file
+reads: cold build 3,870 ms, warm count 351 ms, 30-entry page 14 ms, full-history
+sparse search 1,087 ms. The earlier same harness measured 10,913 / 628 / 10 /
+1,795 ms respectively. This is a single-run architectural comparison, not a
+physical-device latency guarantee. Warm count read no Markdown; page read 30
+files; search read only its one matching file. Index writes now use one
+transaction per batch of up to 32 records; search fetches up to 256 texts per
+transaction while retaining the 256-entry scan/cancellation bound.
 
 ## Editor benchmark
 

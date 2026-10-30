@@ -27,10 +27,11 @@ export class LocalIndex {
       app.saveLocalStorage(key, name);
     }
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(name, 1);
+      const request = indexedDB.open(name, 2);
       request.onupgradeneeded = () => {
-        request.result.createObjectStore("metadata", { keyPath: "path" });
-        request.result.createObjectStore("search", { keyPath: "path" });
+        for (const store of ["metadata", "search", "links"]) {
+          if (!request.result.objectStoreNames.contains(store)) request.result.createObjectStore(store, { keyPath: "path" });
+        }
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -98,11 +99,30 @@ export class LocalIndex {
       });
     } catch (error) { this.fail(error); }
   }
-  async put(record: IndexRecord, text: string): Promise<void> {
+  async put(record: IndexRecord, text: string): Promise<void> { await this.putMany([{ record, text }]); }
+  async putMany(values: { record: IndexRecord; text: string }[]): Promise<void> {
+    if (!values.length) return;
     await this.write((meta, search) => {
-      meta.put(record);
-      search.put({ path: record.path, mtime: record.mtime, size: record.size, text });
+      for (const { record, text } of values) {
+        meta.put(record);
+        search.put({ path: record.path, mtime: record.mtime, size: record.size, text });
+      }
     });
+  }
+  async linkRecords<T>(): Promise<T[]> { return await this.read<T[]>("links", store => store.getAll()) ?? []; }
+  async updateLinks(values: { path: string; value?: unknown }[]): Promise<void> {
+    if (!values.length) return;
+    try {
+      const db = await this.database;
+      if (!db || this.disabled) return;
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction("links", "readwrite");
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = transaction.onabort = () => reject(transaction.error);
+        const store = transaction.objectStore("links");
+        for (const { path, value } of values) value === undefined ? store.delete(path) : store.put(value);
+      });
+    } catch (error) { this.fail(error); }
   }
   async remove(path: string): Promise<void> {
     await this.write((meta, search) => { meta.delete(path); search.delete(path); });

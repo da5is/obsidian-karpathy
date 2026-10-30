@@ -110,10 +110,18 @@ export default class KarpathyPlugin extends Plugin {
     this.addCommand({ id: "refresh", name: "Refresh stream and cache", callback: () => {
       this.store.clear();
       this.store.reindex();
+      this.links.clear();
+      void this.links.prepare().catch(error => this.report(error));
       this.changed();
     } });
     this.registerEvent(this.app.vault.on("create", file => this.fileChanged(file)));
     this.registerEvent(this.app.metadataCache.on("changed", file => this.links.changed(file)));
+    let linksResolved = false;
+    this.registerEvent(this.app.metadataCache.on("resolved", () => {
+      if (linksResolved) return;
+      linksResolved = true;
+      void this.links.reconcile().catch(error => this.report(error));
+    }));
     this.registerEvent(this.app.vault.on("modify", file => this.fileChanged(file)));
     this.registerEvent(this.app.vault.on("delete", file => this.fileChanged(file)));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
@@ -121,6 +129,7 @@ export default class KarpathyPlugin extends Plugin {
       this.fileChanged(file, oldPath);
     }));
     this.app.workspace.onLayoutReady(() => {
+      void this.links.prepare().then(() => this.links.reconcile()).catch(error => this.report(error));
       this.applySidebarHiding();
       this.applyFolderHiding();
       if (this.settings.openOnStartup) void this.open().catch(error => this.report(error));
@@ -131,7 +140,7 @@ export default class KarpathyPlugin extends Plugin {
       this.unhide();
 
       void this.store.close();
-      this.links.clear();
+      void this.links.close();
     });
   }
 

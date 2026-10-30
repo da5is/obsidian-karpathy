@@ -44,19 +44,22 @@ changes. An explicit **Refresh stream and cache** rebuilds from Markdown.
 
 There is no shared index file to synchronize. Missing or unavailable IndexedDB
 falls back to reading Markdown. A first build must read the entry files to find
-rescued entries in older folders. Rebuilds yield between batches; file reads use
+rescued entries in older folders. Rebuilds yield based on elapsed work and persist up to 32 records per transaction; file reads use
 at most eight concurrent operations. Search reads the local index in batches of
-64 and scans at most 256 entries per page call. The stream retains at most 120
+256 and scans at most 256 entries per page call. The stream retains at most 120
 rendered entries. Parsed-body and search-text memory caches each have an 8 MiB
 budget and separate item limits. The small ordering index grows with file count.
 
-A development benchmark with 50,000 short entries in headless Edge and real
-IndexedDB measured approximately 10.9 seconds for a first index build, 0.63
-seconds to reopen/count, 10 ms to load 30 entries, and 1.8 seconds for a full
-history search. Reopening/counting read no Markdown; loading the page read 30
-files; search read just its one matching file. Source-file reads were simulated
-in memory. These are architectural checks, not physical mobile, filesystem, or
-OneDrive throughput guarantees.
+Wikilink filenames and aliases have a separate device-local cache, validated
+against live file stats on startup. Completion options are prepared after layout
+readiness and shared across editors. Host metadata is reconciled at startup;
+subsequent file/alias events update individual records. Completion still waits
+if requested before preparation finishes. An explicit refresh also rebuilds
+suggestions. No Markdown bodies are scanned for wikilink completion.
+
+See [performance checks](compatibility.md) for filesystem and real-IndexedDB
+measurements and their limits. The indexes grow with file count; these are not
+mobile-memory or OneDrive throughput guarantees.
 
 ## Sync and recovery
 

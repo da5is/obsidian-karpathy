@@ -63,6 +63,8 @@ npm test
 npm run build
 ```
 
+See [portable setup and native test-vault instructions](docs/development.md) and the [new-chat handoff](docs/handoff.md).
+
 The production bundle is `main.js`. Settings, drafts, vault notes, and dependencies are not part of this repository.
 
 MIT licensed.

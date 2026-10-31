@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.1. All timing values below are milliseconds.
+Release: 2.2.2 (same plugin behavior as 2.2.1). All timing values below are milliseconds.
 
 ## Automated and desktop coverage
 

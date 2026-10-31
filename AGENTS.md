@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Karpathy is an Obsidian append-and-review stream for desktop and mobile. `src/main.ts` manages plugin lifecycle; `view.ts` renders the stream; `editor.ts` and `preview.ts` implement CodeMirror editing. `store.ts` handles per-entry persistence and rescue; `index.ts` provides a device-local IndexedDB cache; `model.ts` defines entry parsing and serialization. Settings and date helpers have separate modules. Keep styling in `styles.css`, tests and mocks in `tests/`, and README screenshots in `docs/images/`.
+Karpathy is an Obsidian append-and-review stream for desktop and mobile. `src/main.ts` manages plugin lifecycle; `view.ts` renders the stream; `editor.ts` and `preview.ts` implement CodeMirror editing. `store.ts` handles per-entry persistence and rescue; `index.ts` provides a device-local IndexedDB cache; `model.ts` defines entry parsing and serialization. Settings and date helpers have separate modules. Keep styling in `styles.css`, tests/mocks in `tests/`, portable helpers in `scripts/`, and documentation in `docs/`. Start a new session with `docs/handoff.md` and `docs/development.md`.
 
 ## Build, Test, and Development Commands
 
@@ -10,6 +10,8 @@ Karpathy is an Obsidian append-and-review stream for desktop and mobile. `src/ma
 - `npm test`: bundle `tests/*.test.ts` and run Node's test runner.
 - `npm run build`: type-check TypeScript and produce `main.js` with esbuild.
 - `npm run dev`: rebuild on changes; does not replace the production type check.
+
+Use Node.js 24 and `npm ci` from a fresh clone; automated tests need no Obsidian installation. To create disposable fixtures, run `node scripts/create-test-vault.mjs "../karpathy-test-vault"` after building (destination must not exist). See `docs/development.md` for native smoke checks.
 
 To test locally, copy `main.js`, `manifest.json`, and `styles.css` into a test vault's `.obsidian/plugins/karpathy/`, then reload the plugin. Watch mode does not deploy automatically. Never overwrite plugin `data.json` during deployment.
 
@@ -33,4 +35,6 @@ Until the user changes this instruction, complete requested changes by committin
 
 Preserve entry identity, YAML properties, attachment links, and atomic writes. Rescue updates metadata in place; indexes must remain device-local and rebuildable. Version 1 daily files are not converted. Keep caches and rendered entries bounded. Never commit vault notes, settings, drafts, or generated bundles.
 
-This repository is the canonical source. The working vault is `C:\Users\da5is\Documents\karpathy.md`. Both reference plugins under `C:\Users\da5is\OneDrive\Documents\karpathy.md\.obsidian\plugins\` (`karpathy` and `obsidian-jot-plugin`) are read-only.
+This checkout is the canonical source; do not depend on earlier chat context or untracked `.release-work/` helpers. On a new machine create a disposable vault; verify its absolute path before deployment.
+
+Original-machine context only: the working vault is `C:\Users\da5is\Documents\karpathy.md`. Both reference plugins under `C:\Users\da5is\OneDrive\Documents\karpathy.md\.obsidian\plugins\` (`karpathy` and `obsidian-jot-plugin`) are read-only.

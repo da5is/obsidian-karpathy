@@ -18,7 +18,7 @@ the failure cases below.
 ## Performance follow-up — 2.2.0
 
 Persistent wikilink records, startup preparation, and shared completion options
-address the measured first-suggestion/editor-recreation cost in KAR-008.
+address the measured first-suggestion/editor-recreation cost in KAR-009.
 Time-budgeted yielding and batched index writes/search reads reduce index and
 search overhead. Regression tests cover schema upgrades, warm restoration,
 alias/deletion freshness, multi-editor link targets, and bounded index batches.
@@ -36,7 +36,7 @@ limits](compatibility.md). The original findings below are retained as the revie
 baseline, not descriptions of all current behavior. KAR-002 through KAR-006
 shipped in 2.0.1. No distributed merge or conversion was introduced.
 
-## Next: protect drafts and keep the stream available
+## Archived findings: protect drafts and keep the stream available
 
 ### KAR-001 — P1: Prevent multiple panes from overwriting drafts
 
@@ -252,7 +252,7 @@ observer set.
 track explorer/window lifecycle. **Done when:** typing in a large vault does not
 cause full explorer scans and newly opened explorers apply hiding immediately.
 
-## Suggested delivery order
+## Original delivery order (historical)
 
 1. KAR-001 and KAR-002: draft ownership and fault isolation.
 2. KAR-003 through KAR-007: refresh/action correctness, sort cost, cache freshness,

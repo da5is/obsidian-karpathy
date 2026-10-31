@@ -1,6 +1,6 @@
 {
   "name": "karpathy",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs",

@@ -1,10 +1,10 @@
 # Compatibility and performance checks
 
-Release: 2.2.0. All timing values below are milliseconds.
+Release: 2.2.1. All timing values below are milliseconds.
 
 ## Automated and desktop coverage
 
-113 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+120 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test
@@ -15,6 +15,8 @@ requirement was removed. Previous 2.1.0 native desktop checks used Obsidian 1.14
 Minimum-version Obsidian, macOS/Linux, physical iPhone/iPad/Android, OneDrive
 conflict resolution, and mobile trash restoration still require a device matrix
 run. Do not describe those platforms as newly verified by these tests.
+
+Clipboard-link tests cover matching HTML titles, URI-list representations, selection precedence, disabled networking, ambiguous/mismatched content, inert HTML parsing, and undo. Mobile clipboard formats are simulated; actual iOS/Android source-app behavior still needs device validation. Performance measurements below are from 2.2.0.
 
 ## Storage benchmark
 

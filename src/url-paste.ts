@@ -13,6 +13,39 @@ function pastedUrl(text: string): string | null {
   } catch { return null; }
 }
 
+// Read only the representations supplied with this paste gesture. Never attach
+// clipboard HTML to the live document or collapse a rich selection into one link.
+function clipboardLink(data: DataTransfer, doc: Document): { url: string; title?: string } | null {
+  const plain = data.getData("text/plain").trim();
+  const plainUrl = pastedUrl(plain);
+  const uris = data.getData("text/uri-list").split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith("#"));
+  const uri = uris.length === 1 ? pastedUrl(uris[0]) : null;
+  let url = plainUrl ?? (!plain ? uri : null);
+  const html = data.getData("text/html");
+  if (html && html.length <= 262144) {
+    const template = doc.createElement("template");
+    const fragment = /<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i.exec(html);
+    template.innerHTML = fragment ? fragment[1] : html;
+    template.content.querySelectorAll("script, style, template, noscript").forEach(node => node.remove());
+    const anchors = template.content.querySelectorAll("a[href]");
+    if (anchors.length === 1) {
+      const anchor = anchors[0];
+      const href = pastedUrl(anchor.getAttribute("href") ?? "");
+      const normalize = (text: string) => text.replace(/\s+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+      const label = normalize(anchor.textContent ?? "");
+      const sameUrl = (one: string, two: string) => new URL(one).href === new URL(two).href;
+      const singleLink = normalize(template.content.textContent ?? "") === label && !template.content.querySelector("img, video, audio, iframe, object");
+      if (href && (!uri || sameUrl(href, uri)) &&
+          (plainUrl ? sameUrl(href, plainUrl) : singleLink && (!plain || normalize(plain) === label))) {
+        url = plainUrl ?? href;
+        // A URL repeated as the label supplies no title; retain network fallback.
+        if (label && !pastedUrl(label)) return { url, title: label.slice(0, 500) };
+      }
+    }
+  }
+  return url ? { url } : null;
+}
+
 function markdownLink(title: string, url: string): string {
   const label = title.replace(/[\\`*_[\]<>!&]/g, "\\$&");
   const destination = url.replace(/[\\()"<>]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -105,18 +138,20 @@ export function urlPaste(timeout = 5000, enabled: () => boolean = () => true) {
 
     paste(event: ClipboardEvent): boolean {
       if (event.clipboardData?.files.length || !canFormat(this.view.state)) return false;
-      const url = pastedUrl(event.clipboardData?.getData("text/plain") ?? "");
-      if (!url) return false;
+      const link = event.clipboardData && clipboardLink(event.clipboardData, this.view.dom.ownerDocument);
+      if (!link) return false;
+      const { url, title } = link;
       const selection = this.view.state.selection.main;
       const selected = this.view.state.sliceDoc(selection.from, selection.to);
-      const insert = selected ? markdownLink(selected, url) : url;
+      const label = selected || title;
+      const insert = label ? markdownLink(label, url) : url;
       event.preventDefault();
       this.view.dispatch({
         changes: { from: selection.from, to: selection.to, insert },
         selection: { anchor: selection.from + insert.length },
         userEvent: "input.paste", scrollIntoView: true
       });
-      if (selected || !enabled() || this.lookups.size >= 8) return true;
+      if (label || !enabled() || this.lookups.size >= 8) return true;
       const lookup: Lookup = { from: selection.from, to: selection.from + url.length, url,
         timer: setTimeout(() => this.cancel(lookup), timeout) };
       this.lookups.add(lookup);

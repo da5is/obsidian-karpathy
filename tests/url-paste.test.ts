@@ -36,9 +36,9 @@ function fixture(body = "") {
   editor.view.dispatch({ selection: { anchor: body.length } });
   return { editor, close: async () => { await editor.destroy(); parent.remove(); } };
 }
-function paste(view: EditorView, text: string, files: File[] = []) {
+function paste(view: EditorView, text: string, files: File[] = [], formats: Record<string, string> = {}) {
   const event = new Event("paste", { bubbles: true, cancelable: true });
-  Object.defineProperty(event, "clipboardData", { value: { files, getData: (type: string) => type === "text/plain" ? text : "" } });
+  Object.defineProperty(event, "clipboardData", { value: { files, getData: (type: string) => type === "text/plain" ? text : formats[type] ?? "" } });
   view.contentDOM.dispatchEvent(event);
   return event;
 }
@@ -251,4 +251,99 @@ test("title requests remain capped after UI lookups expire and disabling titles 
   assert.equal(disabled.state.doc.toString(), url);
   assert.equal(urlRequests.calls.length, 4);
   disabled.destroy(); second.remove();
+});
+
+test("clipboard HTML supplies an immediate escaped title without fetching and undoes as one paste", async () => {
+  const { editor, close } = fixture();
+  try {
+    paste(editor.view, url, [], { "text/html": `<a href="${url}"> A <b>[guide]</b> &amp; tips </a>` });
+    assert.equal(editor.body, `[A \\[guide\\] \\& tips](${url})`);
+    assert.equal(editor.view.state.selection.main.head, editor.body.length);
+    await settled();
+    assert.equal(urlRequests.calls.length, 0);
+    undo(editor.view);
+    assert.equal(editor.body, "");
+  } finally { await close(); }
+});
+
+test("single rich links work with label-only plain text or URI data on mobile", async () => {
+  Platform.isDesktopApp = false;
+  try {
+    for (const plain of ["Copied title", ""]) {
+      const { editor, close } = fixture();
+      try {
+        paste(editor.view, plain, [], { "text/html": `<a href="${url}">Copied title</a>`, "text/uri-list": `# source\r\n${url}\r\n` });
+        assert.equal(editor.body, `[Copied title](${url})`);
+        assert.equal(urlRequests.calls.length, 0);
+      } finally { await close(); }
+    }
+  } finally { Platform.isDesktopApp = true; }
+});
+
+test("clipboard titles work when network fetching is disabled and selection labels take precedence", async () => {
+  const parent = document.body.createDiv();
+  const view = new EditorView({ parent, state: EditorState.create({ extensions: [urlPaste(5000, () => false)] }) });
+  try {
+    paste(view, url, [], { "text/html": `<a href="${url}">Clipboard title</a>` });
+    assert.equal(view.state.doc.toString(), `[Clipboard title](${url})`);
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "My label" }, selection: { anchor: 0, head: 8 } });
+    paste(view, url, [], { "text/html": `<a href="${url}">Clipboard title</a>` });
+    assert.equal(view.state.doc.toString(), `[My label](${url})`);
+    assert.equal(urlRequests.calls.length, 0);
+  } finally { view.destroy(); parent.remove(); }
+});
+
+test("mismatched, ambiguous, oversized and URL-only HTML labels fall back to the plain URL lookup", async () => {
+  for (const html of [
+    '<a href="https://other.example/">Wrong title</a>',
+    `<a href="${url}">One</a><a href="${url}">Two</a>`,
+    `<a href="${url}">${url}</a>`,
+    `<a href="${url}"></a>`,
+    '<a href="javascript:alert(1)">Bad</a>',
+    `<a href="${url}">Title</a>` + " ".repeat(262144)
+  ]) {
+    const { editor, close } = fixture();
+    try {
+      paste(editor.view, url, [], { "text/html": html });
+      assert.equal(editor.body, url);
+      await until(() => editor.body.startsWith("[A useful article]"));
+      assert.equal(urlRequests.calls.at(-1)!.url, url);
+    } finally { await close(); }
+  }
+  assert.equal(urlRequests.calls.length, 6);
+});
+
+test("rich multi-link selections and surrounding prose retain normal paste behavior", async () => {
+  for (const [plain, html] of [
+    ["Before Title after", `<p>Before <a href="${url}">Title</a> after</p>`],
+    ["One Two", `<a href="${url}">One</a><a href="https://other.example">Two</a>`],
+    ["Unrelated text", `<a href="${url}">Title</a>`]
+  ]) {
+    const { editor, close } = fixture();
+    try {
+      paste(editor.view, plain, [], { "text/html": html, "text/uri-list": url });
+      assert.equal(editor.body, plain);
+      assert.equal(urlRequests.calls.length, 0);
+    } finally { await close(); }
+  }
+});
+
+test("HTML fragment context is ignored and HTML resources never attach to the document", async () => {
+  const { editor, close } = fixture();
+  try {
+    paste(editor.view, url, [], { "text/html": `<html><body>Context<!--StartFragment--><a href="${url}" onclick="throw 1">Title</a><script>throw 1</script><!--EndFragment-->After</body></html>` });
+    assert.equal(editor.body, `[Title](${url})`);
+    assert.equal(document.querySelector('[onclick="throw 1"]'), null);
+    assert.equal(urlRequests.calls.length, 0);
+  } finally { await close(); }
+});
+
+test("a lone URI representation can use the existing network fallback", async () => {
+  const { editor, close } = fixture();
+  try {
+    paste(editor.view, "", [], { "text/uri-list": `# comment\n${url}\n` });
+    assert.equal(editor.body, url);
+    await until(() => editor.body.startsWith("[A useful article]"));
+    assert.equal(urlRequests.calls.length, 1);
+  } finally { await close(); }
 });

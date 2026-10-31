@@ -80,7 +80,7 @@ export class KarpathySettingsTab extends PluginSettingTab {
         void this.plugin.changeBase(input.value).catch(error => this.plugin.report(error));
       }));
     new Setting(containerEl).setName("Fetch pasted URL titles")
-      .setDesc("Contact pasted websites to turn URLs into titled links. Disable to keep plain URLs without a request.")
+      .setDesc("Fetch a page title only when the clipboard supplies no label. Clipboard titles and selected text work without requests even when this is disabled.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.fetchUrlTitles).onChange(value => {
         void this.plugin.updateSettings(next => { next.fetchUrlTitles = value; }).catch(error => this.plugin.report(error));
       }));

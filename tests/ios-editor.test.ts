@@ -103,6 +103,8 @@ test("iOS deferred Return continues a bullet, exits it, then saves with an empty
     assert.equal(editor.body, "- mobile list\n\n");
     assert.equal(saved.length, 0);
     await nativeReturn();
+    assert.equal(saved.length, 0);
+    await nativeReturn();
     assert.deepEqual(saved, ["- mobile list"]);
     assert.equal(editor.body, "");
     assert.equal(editor.view.state.selection.main.head, 0);

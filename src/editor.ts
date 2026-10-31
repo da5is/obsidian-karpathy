@@ -204,13 +204,20 @@ export class CaptureEditor {
         const cleared = next.doc.lineAt(cursor);
         if (emptyItem && !cleared.text.trim()) {
           // Leave a blank paragraph after exiting the outermost list.
-          // Paragraph spacing does not count toward the save gesture.
+          // Exiting the list starts the gesture; continuing/outdenting does not.
+          this.enterCount = selection.head === view.state.doc.length ? 1 : 0;
           view.dispatch([transaction, next.update({
             changes: { from: cleared.from, to: cleared.to, insert: "\n" },
             selection: { anchor: cleared.from + 1 }, userEvent: "input", scrollIntoView: true
           })]);
-        } else view.dispatch(transaction);
+        } else {
+          this.enterCount = 0;
+          view.dispatch(transaction);
+        }
       } })) return true;
+      // Moving below an image/embed is navigation, not a request to submit.
+      const image = /!\[\[[^\]\n]+\]\]\s*$|!\[[^\]\n]*\]\([^\n]*\)\s*$/.exec(line.text);
+      if (image && !(/\\*$/.exec(line.text.slice(0, image.index))![0].length % 2)) this.enterCount = 0;
       if (!this.canSubmit(view)) return insertNewline(view);
       this.enterCount = 0;
       this.options.save();

@@ -23,7 +23,7 @@ function enter(editor: CaptureEditor, shiftKey = false) {
   editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true, shiftKey }));
 }
 
-test("bullets continue, an empty bullet exits to a paragraph, and the third Enter saves", async () => {
+test("bullets continue, an empty bullet exits to a paragraph, and the fourth Enter saves", async () => {
   for (const marker of ["-", "*", "+"]) {
     const { editor, saved, close } = fixture(`${marker} first`);
     try {
@@ -34,6 +34,8 @@ test("bullets continue, an empty bullet exits to a paragraph, and the third Ente
       assert.equal(editor.body, `${marker} first\n${marker} second\n${marker} `);
       enter(editor);
       assert.equal(editor.body, `${marker} first\n${marker} second\n\n`);
+      assert.equal(saved.length, 0);
+      enter(editor);
       assert.equal(saved.length, 0);
       enter(editor);
       assert.deepEqual(saved, [`${marker} first\n${marker} second`]);
@@ -127,6 +129,8 @@ test("keyboards that deliver only native newline input continue and exit lists w
     assert.equal(editor.body, "- mobile\n\n");
     assert.equal(saved.length, 0);
     nativeEnter();
+    assert.equal(saved.length, 0);
+    nativeEnter();
     assert.deepEqual(saved, ["- mobile"]);
     assert.equal(editor.body, "");
     assert.equal(editor.view.state.selection.main.head, 0);
@@ -184,5 +188,49 @@ test("finishing an attachment resets prior Enter presses and preserves a fresh t
     assert.equal(saved.length, 1);
     assert.ok(saved[0].includes("![[photo.png]]"));
     assert.equal(editor.body, "");
+  } finally { await close(); }
+});
+
+test("image departure takes an extra Enter before the three-Enter save gesture", async () => {
+  for (const body of ["![[photo.png]]", "![photo](images/photo.png)", "![[photo.png|250]]", "![photo](https://example.com/a_(b).png)"]) {
+    const { editor, saved, close } = fixture(body);
+    try {
+      for (let i = 0; i < 3; i++) { enter(editor); assert.equal(saved.length, 0, `${body}, press ${i + 1}`); }
+      enter(editor);
+      assert.deepEqual(saved, [body]);
+      assert.equal(editor.body, "");
+    } finally { await close(); }
+  }
+});
+
+test("ordered, task, and nested lists allow a blank paragraph before sending", async () => {
+  for (const body of ["1. task", "- [ ] task", "- parent\n  - child"]) {
+    const { editor, saved, close } = fixture(body);
+    try {
+      const presses = body.includes("child") ? 5 : 4;
+      for (let i = 1; i < presses; i++) { enter(editor); assert.equal(saved.length, 0); }
+      enter(editor);
+      assert.deepEqual(saved, [body]);
+    } finally { await close(); }
+  }
+});
+
+test("pasted image without trailing spacing uses four Enters while ordinary text still uses three", async () => {
+  const { editor, saved, close } = fixture("");
+  editor["options"].upload = async () => ["![[photo.png]]"];
+  try {
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { files: [new File(["image"], "photo.png", { type: "image/png" })] } });
+    editor.view.contentDOM.dispatchEvent(paste);
+    for (let i = 0; i < 20 && editor.pending; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(editor.body, "![[photo.png]]");
+    for (let i = 0; i < 3; i++) { enter(editor); assert.equal(saved.length, 0); }
+    enter(editor);
+    assert.equal(saved.length, 1);
+    editor.insert("plain text");
+    enter(editor); enter(editor);
+    assert.equal(saved.length, 1);
+    enter(editor);
+    assert.deepEqual(saved, ["![[photo.png]]", "plain text"]);
   } finally { await close(); }
 });

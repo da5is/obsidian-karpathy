@@ -1,10 +1,10 @@
 # Compatibility and performance checks
 
-Release: 2.2.3. All timing values below are milliseconds.
+Release: 2.2.4. All timing values below are milliseconds.
 
 ## Automated and desktop coverage
 
-123 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+126 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test
@@ -22,6 +22,11 @@ The 2.2.3 Enter regression tests cover restored blank lines/empty bullets,
 attachment completion, Shift+Enter/cursor resets, and deferred iOS input.
 A Windows Obsidian 1.14.5 smoke check confirmed saving the test draft and an
 empty, focused next input. Physical iOS behavior remains unverified.
+
+The 2.2.4 regression suite additionally checks four-Enter image/list submission,
+pasted image data, task/numbered/nested lists, and unchanged three-Enter text.
+The 2.2.4 native desktop repeat was unavailable: the computer-use tool reported
+that input geometry was unavailable for the development window.
 
 ## Storage benchmark
 

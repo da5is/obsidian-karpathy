@@ -55,6 +55,10 @@ Use **Karpathy: Review storage health** to find skipped or renamed entries, dupl
 
 One pane owns each capture/edit draft. Large drafts use source editing; attachments are limited to 50 MiB each. **Fetch pasted URL titles** can be disabled in settings. See [compatibility, performance checks, and limits](docs/compatibility.md).
 
+## Using an LLM with your vault
+
+Give the LLM the standalone [vault instructions](docs/VAULT_LLM_GUIDE.md). You can copy that file into your vault as `KARPATHY_VAULT_GUIDE.md` and explicitly ask the LLM to read it before working. It describes paths, YAML, attachments, stream order, safe writes, and sync conflicts. It does not authorize changes to your notes on its own.
+
 ## Development
 
 ```sh

@@ -1,5 +1,9 @@
 # Entry storage
 
+For a self-contained guide an LLM can follow while reading/editing vault content,
+see [vault instructions](VAULT_LLM_GUIDE.md). This document describes the plugin
+storage and cache implementation.
+
 Version 2 stores one entry per Markdown file. It does not convert version 1 daily
 files. Update all devices and start with a clean capture folder before use.
 Existing daily files remain untouched, but do not appear in the version 2 stream.

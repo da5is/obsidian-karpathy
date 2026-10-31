@@ -1,40 +1,62 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure
 
-Karpathy is an Obsidian append-and-review stream for desktop and mobile. `src/main.ts` manages plugin lifecycle; `view.ts` renders the stream; `editor.ts` and `preview.ts` implement CodeMirror editing. `store.ts` handles per-entry persistence and rescue; `index.ts` provides a device-local IndexedDB cache; `model.ts` defines entry parsing and serialization. Settings and date helpers have separate modules. Keep styling in `styles.css`, tests/mocks in `tests/`, portable helpers in `scripts/`, and documentation in `docs/`. Start a new session with `docs/handoff.md` and `docs/development.md`.
+Karpathy is an append-and-review stream for Obsidian desktop/mobile. `src/main.ts`
+handles lifecycle/settings; `view.ts` renders the stream; `editor.ts` and
+`preview.ts` implement editing; `store.ts`, `model.ts`, and `index.ts` implement
+entry persistence and local caches. Styles are in `styles.css`, tests/mocks in
+`tests/`, portable helpers in `scripts/`, and documentation in `docs/`.
 
-## Build, Test, and Development Commands
+Start each new session with `docs/handoff.md`, `docs/development.md`, Git status,
+and the current manifest. Use `docs/storage.md` for the storage contract and
+`docs/compatibility.md` for validation evidence. `docs/VAULT_LLM_GUIDE.md` is a
+standalone guide for agents working on vault content, not repository code.
 
-- `npm ci`: install dependencies from the lockfile.
-- `npm test`: bundle `tests/*.test.ts` and run Node's test runner.
-- `npm run build`: type-check TypeScript and produce `main.js` with esbuild.
-- `npm run dev`: rebuild on changes; does not replace the production type check.
+## Build and Development
 
-Use Node.js 24 and `npm ci` from a fresh clone; automated tests need no Obsidian installation. To create disposable fixtures, run `node scripts/create-test-vault.mjs "../karpathy-test-vault"` after building (destination must not exist). See `docs/development.md` for native smoke checks.
+Use Node.js 24. `npm ci` installs locked dependencies; `npm test` runs the suite;
+`npm run build` type-checks and bundles; `npm run dev` watches without deploying.
 
-To test locally, copy `main.js`, `manifest.json`, and `styles.css` into a test vault's `.obsidian/plugins/karpathy/`, then reload the plugin. Watch mode does not deploy automatically. Never overwrite plugin `data.json` during deployment.
+After building, `node scripts/create-test-vault.mjs "../karpathy-test-vault"`
+creates disposable fixtures; the destination must not exist. Automated tests
+need no Obsidian installation. Native testing needs the desktop app. Deploy only
+`main.js`, `manifest.json`, and `styles.css` into the verified test vault's
+`.obsidian/plugins/karpathy/`; preserve `data.json` and reload the plugin.
 
-## Coding Style & Naming Conventions
+## Coding and Testing
 
-Follow existing TypeScript: two-space indentation, double quotes, semicolons, camelCase functions/variables, and PascalCase classes/interfaces. Use descriptive lowercase module filenames. No formatter or linter is configured; match surrounding code and run the build. Prefer Obsidian APIs; guard desktop-only Electron/filesystem paths so mobile remains supported. Use theme CSS variables for UI colors.
+Use two spaces, double quotes, semicolons, camelCase functions/variables, and
+PascalCase types. Match existing TypeScript; no formatter/linter is configured.
+Prefer Obsidian APIs, guard desktop-only imports, and use theme CSS variables.
 
-## Testing Guidelines
+Tests use `node:test`, jsdom, and host mocks; name them `<module>.test.ts`. Add
+regression coverage for changed persistence, editor gestures, cache invalidation,
+and recovery. Run tests and the production build. Check visible/host integration
+changes in Obsidian when available; report unavailable native checks. Simulated
+mobile input and narrow screenshots do not establish physical-device support.
 
-Tests use `node:test`, assertions, jsdom, and Obsidian/Electron mocks. Name files `<module>.test.ts` and test cases after observable behavior. Add regression coverage for parsing, persistence, rescue recovery, cache invalidation, or editor interactions when changing them. No numerical coverage threshold is configured. Run tests and the production build before submitting code. Check UI changes in Obsidian; simulated narrow screenshots do not establish physical mobile compatibility.
+## Delivery and Documentation
 
-## Commit & Pull Request Guidelines
+Use imperative commit messages and describe behavior, validation, and limitations.
+Update affected README, handoff, storage, backlog, and compatibility instructions;
+keep historical measurements clearly labeled. Include screenshots for visible
+changes where useful.
 
-Use concise, imperative commit messages. PRs should describe behavior changes, validation, limitations, and relevant issues; include screenshots for visible changes.
+Default: commit, push `main`, and publish a BRAT-compatible release without another
+confirmation. Review/planning/local-only user requests override this. Increment all
+version metadata and verify published asset hashes against the tested build.
+Never include unrelated changes or credentials.
 
-## Default Delivery Workflow
+## Data Safety
 
-Until the user changes this instruction, complete requested changes by committing, pushing to `main`, and publishing a new BRAT-compatible release without another confirmation. Honor requests to plan, review, or keep work local. Run checks first; increment version metadata, attach `main.js`, `manifest.json`, and `styles.css`, and verify published files match the build. Never include unrelated changes.
+Preserve entry identity, YAML properties, attachment links, atomic local writes,
+and bounded caches/rendering. Rescue updates in place; no version-1 conversion.
+Never commit notes, settings, drafts, generated bundles, or `.release-work/`.
+Do not depend on earlier chats or ignored benchmark helpers.
 
-## Data Safety & Local Workspace
-
-Preserve entry identity, YAML properties, attachment links, and atomic writes. Rescue updates metadata in place; indexes must remain device-local and rebuildable. Version 1 daily files are not converted. Keep caches and rendered entries bounded. Never commit vault notes, settings, drafts, or generated bundles.
-
-This checkout is the canonical source; do not depend on earlier chat context or untracked `.release-work/` helpers. On a new machine create a disposable vault; verify its absolute path before deployment.
-
-Original-machine context only: the working vault is `C:\Users\da5is\Documents\karpathy.md`. Both reference plugins under `C:\Users\da5is\OneDrive\Documents\karpathy.md\.obsidian\plugins\` (`karpathy` and `obsidian-jot-plugin`) are read-only.
+Verify absolute vault paths; identical display names are insufficient. Use new
+disposable fixtures instead of clearing personal notes. Original-machine test
+vault: `C:\Users\da5is\Documents\karpathy.md`. Both reference plugins under
+`C:\Users\da5is\OneDrive\Documents\karpathy.md\.obsidian\plugins\`
+(`karpathy`, `obsidian-jot-plugin`) remain read-only.

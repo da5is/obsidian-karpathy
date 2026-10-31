@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.4. All timing values below are milliseconds.
+Release: 2.2.5 (documentation-only; plugin behavior is 2.2.4). All timing values below are milliseconds.
 
 ## Automated and desktop coverage
 
@@ -11,7 +11,7 @@ production bundling pass. Production uses Obsidian's CodeMirror modules; test
 packages are not proof of compatibility with every Obsidian runtime version.
 
 The plugin minimum remains Obsidian 1.8.7. The unnecessary regex-lookbehind
-requirement was removed. Previous 2.1.0 native desktop checks used Obsidian 1.14.5 on Windows: plugin reload and the completed storage-health report in the clean development vault. This release adds automated cache and multi-editor completion checks; it does not add a new native-device validation run.
+requirement was removed. Previous 2.1.0 native desktop checks used Obsidian 1.14.5 on Windows: plugin reload and the completed storage-health report in the clean development vault. Later cache/completion changes have automated coverage. Native checks for later releases are recorded separately below.
 Minimum-version Obsidian, macOS/Linux, physical iPhone/iPad/Android, OneDrive
 conflict resolution, and mobile trash restoration still require a device matrix
 run. Do not describe those platforms as newly verified by these tests.

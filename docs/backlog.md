@@ -1,5 +1,25 @@
 # Product backlog
 
+## Current outstanding work — 2026-10-31, 2.2.5
+
+The original KAR-001–KAR-015 findings below have implementation changes shipped.
+Current work is validation/profiling and documented API limitations:
+
+- Physical iPhone/iPad/Android keyboards, clipboard, background/resume, cache
+  eviction, attachment behavior, scrolling latency, and peak memory.
+- Minimum/current Obsidian, macOS/Linux, and native pop-out integration.
+- OneDrive concurrent edit/rescue/delete conflicts and mobile trash recovery.
+- Image-heavy stream memory, autocomplete filtering/paint time, and variable
+  cold filesystem indexing at large vault sizes.
+- Host-compatible URL-request cancellation/download limits; current concurrency
+  limits do not abort a stalled response.
+
+The latest list/image gesture behavior has automated coverage; the 2.2.4 native
+repeat was unavailable. See [validation evidence](compatibility.md).
+2.2.5 is documentation-only relative to 2.2.4.
+
+## Historical review and shipped work
+
 Review date: 2026-10-30. Baseline: **2.0.0**, commit `7b771c7`.
 Scope: performance, stability, and desktop/mobile compatibility. No runtime
 changes are included in this review.
@@ -10,7 +30,7 @@ P2 = next hardening work; P3 = later improvement. See the delivery status below 
 Obsidian mocks; inspection = established code path, not a measured device
 failure; validation gap = needs host/device testing.
 
-The existing 92 tests, TypeScript checks, and production build pass. Seven additional isolated
+At the 2.0.0 review baseline, 92 tests, TypeScript checks, and the production build passed. Seven additional isolated
 probes reproduce KAR-001 through KAR-007. These probes use in-memory vaults and
 fake IndexedDB; no user notes were changed. Passing existing tests does not cover
 the failure cases below.

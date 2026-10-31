@@ -29,12 +29,15 @@ test("iOS deferred Return cannot insert a newline into the next draft", async ()
   try {
     const editor = view["editor"]!;
     editor.insert("A mobile note\n\n");
-    editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
-    const event = new Event("beforeinput", { bubbles: true, cancelable: true });
-    Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
-    editor.view.contentDOM.dispatchEvent(event);
-    // Wait beyond CodeMirror's 50ms iOS replay, not just until saving clears text.
-    await wait(150);
+    for (let press = 0; press < 3; press++) {
+      editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      const event = new Event("beforeinput", { bubbles: true, cancelable: true });
+      Object.defineProperties(event, { inputType: { value: "insertParagraph" }, isComposing: { value: false } });
+      editor.view.contentDOM.dispatchEvent(event);
+      // Wait beyond CodeMirror's 50ms iOS replay, not just until saving clears text.
+      await wait(150);
+      if (press < 2) assert.equal(app.vault.getMarkdownFiles().length, 0);
+    }
     assert.equal(app.vault.getMarkdownFiles().length, 1);
     assert.equal(editor.body, "");
     assert.equal(editor.view.state.selection.main.head, 0);

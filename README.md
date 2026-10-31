@@ -13,7 +13,7 @@ Inspired by Andrej Karpathy's [append-and-review note](https://karpathy.bearblog
 ## Use
 
 - Open **Karpathy: Open stream** from the command palette.
-- Write Markdown. Save with **Ctrl/Cmd+Enter**, three Enter presses, or **Save**. Two Enter presses keep a paragraph break.
+- Write Markdown. Save with **Ctrl/Cmd+Enter**, three consecutive plain Enter presses at the end, or **Save**. Existing blank lines do not count. Typing, cursor movement, paste, Shift+Enter, or leaving the editor resets the gesture. Two Enter presses keep a paragraph break.
 - Headings, text fonts, colors, and reading width follow your selected Obsidian theme. Compact panes keep the entry actions visible as icons with generous tap targets.
 - Enter continues bullets, numbered lists, and checklists. Enter on an empty item exits the list into a blank paragraph; another Enter can save the entry. Nested lists exit one level at a time. **Shift+Enter** inserts a plain newline.
 - Paste images and files, or use the file and photo buttons beside Save.

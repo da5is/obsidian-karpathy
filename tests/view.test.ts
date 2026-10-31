@@ -277,6 +277,8 @@ test("triple Enter captures through the real editor; Shift+Enter remains a newli
   assert.equal(editor.body, "todo: first\n\n");
   assert.equal(app.vault.getMarkdownFiles().length, 0);
   editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+  assert.equal(app.vault.getMarkdownFiles().length, 0);
+  editor.view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
   await until(() => editor.body === "");
   assert.equal(app.vault.getMarkdownFiles().length, 1);
   await until(() => view.contentEl.querySelectorAll(".karpathy-entry").length === 1);
@@ -421,6 +423,8 @@ for (const cancelable of [true, false]) {
       };
       nativeReturn();
       await until(() => editor.body === "mobile thought\n\n");
+      assert.equal(app.vault.getMarkdownFiles().length, 0);
+      nativeReturn();
       assert.equal(app.vault.getMarkdownFiles().length, 0);
       nativeReturn();
       await until(() => editor.body === "");

@@ -4,10 +4,12 @@ Read `AGENTS.md` first, then `docs/development.md`. This file replaces dependenc
 on the long implementation chat. Check Git status/log and `manifest.json` before
 working; do not assume this snapshot is the latest release forever.
 
-## Snapshot: 2026-10-30, release 2.2.2
+## Snapshot: 2026-10-31, release 2.2.3
 
 Repository: https://github.com/da5is/obsidian-karpathy, branch `main`.
-2.2.2 adds portable development instructions/fixtures; plugin behavior is 2.2.1.
+2.2.3 counts consecutive plain Enter presses instead of inferring the gesture
+from trailing blank lines. It passes 123 tests plus a Windows desktop smoke check.
+2.2.2 added portable development instructions/fixtures.
 A fresh source export installed lockfile dependencies and passed all 120 tests,
 the production build, and sample-vault generation for 2.2.2 on Windows/Node 24.
 No physical mobile validation was claimed.

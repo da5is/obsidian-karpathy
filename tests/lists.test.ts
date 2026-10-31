@@ -132,3 +132,57 @@ test("keyboards that deliver only native newline input continue and exit lists w
     assert.equal(editor.view.state.selection.main.head, 0);
   } finally { await close(); }
 });
+
+test("existing trailing newlines and restored empty bullets never shorten the three-Enter gesture", async () => {
+  for (const body of ["![[photo.png]]\n", "![[photo.png]]\n\n", "- item\n- ", "- item\n\n"]) {
+    const { editor, saved, close } = fixture(body);
+    try {
+      enter(editor);
+      assert.equal(saved.length, 0, `first Enter: ${body}`);
+      enter(editor);
+      assert.equal(saved.length, 0, `second Enter: ${body}`);
+      enter(editor);
+      assert.equal(saved.length, 1, `third Enter: ${body}`);
+      assert.equal(editor.body, "");
+      assert.equal(editor.view.state.selection.main.head, 0);
+    } finally { await close(); }
+  }
+});
+
+test("Shift+Enter and moving the cursor interrupt the submission gesture", async () => {
+  const { editor, saved, close } = fixture("note");
+  try {
+    enter(editor, true);
+    enter(editor);
+    enter(editor);
+    assert.equal(saved.length, 0);
+    editor.view.dispatch({ selection: { anchor: 0 } });
+    editor.view.dispatch({ selection: { anchor: editor.body.length } });
+    enter(editor);
+    enter(editor);
+    assert.equal(saved.length, 0);
+    enter(editor);
+    assert.equal(saved.length, 1);
+  } finally { await close(); }
+});
+
+test("finishing an attachment resets prior Enter presses and preserves a fresh three-Enter gesture", async () => {
+  const { editor, saved, close } = fixture("- item");
+  let finish!: (links: string[]) => void;
+  editor["options"].upload = () => new Promise(resolve => { finish = resolve; });
+  try {
+    enter(editor);
+    editor.attach([new File(["image"], "photo.png", { type: "image/png" })]);
+    for (let i = 0; i < 20 && !finish; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    finish(["![[photo.png]]\n"]);
+    for (let i = 0; i < 20 && editor.pending; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(editor.pending, 0);
+    enter(editor);
+    enter(editor);
+    assert.equal(saved.length, 0);
+    enter(editor);
+    assert.equal(saved.length, 1);
+    assert.ok(saved[0].includes("![[photo.png]]"));
+    assert.equal(editor.body, "");
+  } finally { await close(); }
+});

@@ -1,10 +1,10 @@
 # Compatibility and performance checks
 
-Release: 2.2.2 (same plugin behavior as 2.2.1). All timing values below are milliseconds.
+Release: 2.2.3. All timing values below are milliseconds.
 
 ## Automated and desktop coverage
 
-120 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+123 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test
@@ -17,6 +17,11 @@ conflict resolution, and mobile trash restoration still require a device matrix
 run. Do not describe those platforms as newly verified by these tests.
 
 Clipboard-link tests cover matching HTML titles, URI-list representations, selection precedence, disabled networking, ambiguous/mismatched content, inert HTML parsing, and undo. Mobile clipboard formats are simulated; actual iOS/Android source-app behavior still needs device validation. Performance measurements below are from 2.2.0.
+
+The 2.2.3 Enter regression tests cover restored blank lines/empty bullets,
+attachment completion, Shift+Enter/cursor resets, and deferred iOS input.
+A Windows Obsidian 1.14.5 smoke check confirmed saving the test draft and an
+empty, focused next input. Physical iOS behavior remains unverified.
 
 ## Storage benchmark
 

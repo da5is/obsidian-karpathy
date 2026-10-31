@@ -35,6 +35,8 @@ export class CaptureEditor {
   private readOnly = new Compartment();
   private uploads = new Set<Promise<void>>();
   private destroyed = false;
+  private enterCount = 0;
+  private handlingEnter = false;
   private hotkeys: KeymapEventHandler[] = [];
 
   constructor(parent: HTMLElement, private options: EditorOptions) {
@@ -98,6 +100,7 @@ export class CaptureEditor {
           placeholder("Capture a thought..."),
           EditorView.contentAttributes.of({ "aria-label": "Entry Markdown editor", spellcheck: "true", autocapitalize: "sentences" }),
           EditorView.updateListener.of(update => {
+            if (!this.handlingEnter && (update.docChanged || update.selectionSet)) this.enterCount = 0;
             if (update.docChanged) options.change(update.state.doc.toString());
           }),
           // CodeMirror replays iOS Return after native input. Saving in
@@ -110,7 +113,13 @@ export class CaptureEditor {
             return this.handleEnter(view);
           }),
           EditorView.domEventHandlers({
+            blur: () => { this.enterCount = 0; },
+            compositionstart: () => { this.enterCount = 0; },
+            keydown: event => {
+              if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) this.enterCount = 0;
+            },
             paste: event => {
+              this.enterCount = 0;
               if (this.view.state.readOnly) return true;
               const files = Array.from(event.clipboardData?.files ?? []);
               if (!files.length) {
@@ -181,30 +190,36 @@ export class CaptureEditor {
   private handleEnter(view: EditorView): boolean {
     if (view.composing || view.state.readOnly) return false;
     if (this.options.completeLink && acceptCompletion(view)) return true;
-    const selection = view.state.selection.main;
-    const line = view.state.doc.lineAt(selection.head);
-    const emptyItem = selection.empty && view.state.selection.ranges.length === 1 &&
-      /^[ \t]*(?:[-+*]|\d+[.)])(?:[ \t]+\[[ xX]\])?[ \t]*$/.test(line.text);
-    if (continueMarkup({ state: view.state, dispatch: transaction => {
-      const next = transaction.state;
-      const cursor = next.selection.main.head;
-      const cleared = next.doc.lineAt(cursor);
-      if (emptyItem && !cleared.text.trim()) {
-        // Leave a blank paragraph after exiting the outermost list. This also
-        // keeps continue / exit / save as three Enter presses in the composer.
-        view.dispatch([transaction, next.update({
-          changes: { from: cleared.from, to: cleared.to, insert: "\n" },
-          selection: { anchor: cleared.from + 1 }, userEvent: "input", scrollIntoView: true
-        })]);
-      } else view.dispatch(transaction);
-    } })) return true;
-    if (!this.canSubmit(view)) return false;
-    this.options.save();
-    return true;
+    this.handlingEnter = true;
+    try {
+      const selection = view.state.selection.main;
+      this.enterCount = selection.empty && view.state.selection.ranges.length === 1 && selection.head === view.state.doc.length
+        ? Math.min(3, this.enterCount + 1) : 0;
+      const line = view.state.doc.lineAt(selection.head);
+      const emptyItem = selection.empty && view.state.selection.ranges.length === 1 &&
+        /^[ \t]*(?:[-+*]|\d+[.)])(?:[ \t]+\[[ xX]\])?[ \t]*$/.test(line.text);
+      if (continueMarkup({ state: view.state, dispatch: transaction => {
+        const next = transaction.state;
+        const cursor = next.selection.main.head;
+        const cleared = next.doc.lineAt(cursor);
+        if (emptyItem && !cleared.text.trim()) {
+          // Leave a blank paragraph after exiting the outermost list.
+          // Paragraph spacing does not count toward the save gesture.
+          view.dispatch([transaction, next.update({
+            changes: { from: cleared.from, to: cleared.to, insert: "\n" },
+            selection: { anchor: cleared.from + 1 }, userEvent: "input", scrollIntoView: true
+          })]);
+        } else view.dispatch(transaction);
+      } })) return true;
+      if (!this.canSubmit(view)) return insertNewline(view);
+      this.enterCount = 0;
+      this.options.save();
+      return true;
+    } finally { this.handlingEnter = false; }
   }
 
   private canSubmit(view: EditorView): boolean {
-    if (!this.options.tripleEnter || view.composing || view.state.readOnly) return false;
+    if (this.enterCount < 3 || !this.options.tripleEnter || view.composing || view.state.readOnly) return false;
     const selection = view.state.selection.main;
     if (!selection.empty || selection.head !== view.state.doc.length) return false;
     const text = view.state.doc.toString();
@@ -219,11 +234,13 @@ export class CaptureEditor {
     if (!this.destroyed) this.view.dispatch({});
   }
   lock(value: boolean): void {
+    if (value) this.enterCount = 0;
     if (value && !this.destroyed && this.options.completeLink) closeCompletion(this.view);
     if (!this.destroyed) this.view.dispatch({ effects: this.readOnly.reconfigure(EditorState.readOnly.of(value)) });
   }
   setBody(body: string): void {
     if (this.destroyed) return;
+    this.enterCount = 0;
     if (this.options.completeLink) closeCompletion(this.view);
     this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: body }, selection: { anchor: 0 } });
   }

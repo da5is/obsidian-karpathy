@@ -477,8 +477,10 @@ export class KarpathyView extends ItemView {
           .filter(tag => !tag.closest(".internal-embed, pre, code"));
         if (tags.length) {
           const tagRow = surface.createDiv({ cls: "karpathy-entry-tags" });
+          tagRow.createSpan({ text: "tags: " });
           for (const tag of tags) {
             const paragraph = tag.closest("p");
+            if (tag !== tags[0]) tagRow.append(", ");
             tagRow.appendChild(tag);
             if (paragraph && !paragraph.textContent?.trim() && !paragraph.querySelector("img, video, audio, iframe, input, .internal-embed")) paragraph.remove();
           }

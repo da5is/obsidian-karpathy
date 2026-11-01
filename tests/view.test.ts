@@ -23,8 +23,9 @@ test("stream moves clickable tags below metadata without changing saved Markdown
   await view.onOpen();
   try {
     const row = view.contentEl.querySelector(".karpathy-entry-tags")!;
+    assert.equal(row.textContent, "tags: #ai, #work/project, #photo, #last");
     assert.deepEqual([...row.querySelectorAll("a")].map(tag => tag.textContent), ["#ai", "#work/project", "#photo", "#last"]);
-    (row.firstElementChild as HTMLAnchorElement).click();
+    row.querySelector<HTMLAnchorElement>("a")!.click();
     assert.equal(clicks, 1);
     const content = view.contentEl.querySelector(".karpathy-entry-content")!;
     assert.equal(content.querySelectorAll("p").length, 2);

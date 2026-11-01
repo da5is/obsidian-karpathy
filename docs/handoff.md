@@ -4,11 +4,11 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-01, 2.2.6
+## Current snapshot — 2026-11-01, 2.2.7
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
-2.2.6 centers stream images and moves rendered tags below the written/rescue
-line without changing source Markdown. The automated suite has 127 tests.
+2.2.7 labels the tag row “tags:” and separates multiple tags with commas.
+Images stay centered and tags remain below the written/rescue line. The automated suite has 127 tests.
 
 ## Product behavior to preserve
 

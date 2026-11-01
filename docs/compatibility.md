@@ -1,10 +1,13 @@
 # Compatibility and performance checks
 
-Release: 2.2.6. All timing values below are milliseconds.
+Release: 2.2.7. All timing values below are milliseconds.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
 this release remains pending; the open Obsidian window was a different vault.
+
+2.2.7 extends the tag-row assertion to cover its label and comma separators.
+Native visual verification remains pending.
 
 ## Automated and desktop coverage
 

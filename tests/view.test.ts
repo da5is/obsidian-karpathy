@@ -12,6 +12,26 @@ import { DEFAULT_SETTINGS, parseSettings, themePrefixColor, themeTagColor } from
 
 after(closeDOM);
 
+test("capture and Edit enable native autocorrection alongside spelling and capitalization", async () => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("A note", new Date(), "autocorrect");
+  await view.onOpen();
+  try {
+    const check = (content: HTMLElement) => {
+      assert.equal(content.getAttribute("autocorrect"), "on");
+      assert.equal(content.getAttribute("spellcheck"), "true");
+      assert.equal(content.getAttribute("autocapitalize"), "sentences");
+    };
+    check(view["editor"]!.view.contentDOM);
+    view.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+    check(document.querySelector<HTMLElement>(".karpathy-edit-modal .cm-content")!);
+  } finally {
+    for (const draft of plugin["draftOwners"].values()) if ("close" in draft.owner) (draft.owner as any).close();
+    await until(() => plugin.editing === 0);
+    await view.onClose(); await plugin.store.close();
+  }
+});
+
 test("loading synced entries learns prefixes in one batch without overwriting colors or notes", async () => {
   const { plugin, view } = fixture();
   plugin.settings.prefixColors.work = "#123456";

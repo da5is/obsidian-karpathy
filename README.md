@@ -76,3 +76,5 @@ The production bundle is `main.js`. Settings, drafts, vault notes, and dependenc
 MIT licensed.
 
 Prefixes at the start of loaded stream entries are automatically registered with theme colors, including notes created on other devices. Discovery runs as entries are displayed (including paging and search), preserves custom colors, and does not modify note files.
+
+Capture and Edit enable native keyboard autocorrection alongside spellcheck and sentence capitalization. Actual corrections depend on the device keyboard settings and host support.

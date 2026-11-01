@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.12. All timing values below are milliseconds.
+Release: 2.2.13. All timing values below are milliseconds.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
@@ -29,9 +29,13 @@ settings failure. Physical cross-device sync verification remains pending.
 states. The existing 133 tests and production build pass; native visual verification
 of the font-weight change remains pending.
 
+2.2.13 verifies autocorrect=on, spellcheck=true, and sentence capitalization on
+the capture and Edit contenteditable elements. This establishes configuration,
+not physical iOS/Android keyboard behavior; device validation remains pending.
+
 ## Automated and desktop coverage
 
-133 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+134 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test

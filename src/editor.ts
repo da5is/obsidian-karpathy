@@ -98,7 +98,7 @@ export class CaptureEditor {
           ])),
           prefix, livePreview(options.resolveImage), this.readOnly.of(EditorState.readOnly.of(false)),
           placeholder("Capture a thought..."),
-          EditorView.contentAttributes.of({ "aria-label": "Entry Markdown editor", spellcheck: "true", autocapitalize: "sentences" }),
+          EditorView.contentAttributes.of({ "aria-label": "Entry Markdown editor", spellcheck: "true", autocorrect: "on", autocapitalize: "sentences" }),
           EditorView.updateListener.of(update => {
             if (!this.handlingEnter && (update.docChanged || update.selectionSet)) this.enterCount = 0;
             if (update.docChanged) options.change(update.state.doc.toString());

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { EditorView } from "@codemirror/view";
-import { App, closeDOM, Menu, Platform } from "./obsidian-mock";
+import { App, closeDOM, MarkdownRenderer, Menu, Platform } from "./obsidian-mock";
 import { shell } from "./electron-mock";
 import KarpathyPlugin from "../src/main";
 import { Store } from "../src/store";
@@ -10,6 +10,30 @@ import { CaptureEditor, editorToolbar } from "../src/editor";
 import { DEFAULT_SETTINGS, parseSettings, themePrefixColor } from "../src/settings";
 
 after(closeDOM);
+
+test("stream moves clickable tags below metadata without changing saved Markdown or embedded tags", async context => {
+  const { plugin, view } = fixture();
+  const body = "Text #ai and #work/project\n\n#last";
+  await plugin.store.capture(body, new Date(), "tag-layout");
+  let clicks = 0;
+  context.mock.method(MarkdownRenderer, "render", async (_app: App, _body: string, element: HTMLElement) => {
+    element.innerHTML = '<p>Text <a class="tag" href="#ai">#ai</a> and <a class="tag" href="#work/project">#work/project</a></p><p><img src="sample.png"><a class="tag" href="#photo">#photo</a></p><p><a class="tag" href="#last">#last</a></p><pre><code>#code</code></pre><div class="internal-embed"><a class="tag">#embedded</a></div>';
+    element.querySelector("a")!.addEventListener("click", event => { event.preventDefault(); clicks++; });
+  });
+  await view.onOpen();
+  try {
+    const row = view.contentEl.querySelector(".karpathy-entry-tags")!;
+    assert.deepEqual([...row.querySelectorAll("a")].map(tag => tag.textContent), ["#ai", "#work/project", "#photo", "#last"]);
+    (row.firstElementChild as HTMLAnchorElement).click();
+    assert.equal(clicks, 1);
+    const content = view.contentEl.querySelector(".karpathy-entry-content")!;
+    assert.equal(content.querySelectorAll("p").length, 2);
+    assert.ok(content.querySelector("img"));
+    assert.equal(content.querySelector("code")?.textContent, "#code");
+    assert.equal(content.querySelector("a.tag")?.textContent, "#embedded");
+    assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].body, body);
+  } finally { await view.onClose(); }
+});
 
 test("entry footers share yesterday and month-first dates for writing and rescue history", async context => {
   context.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 9, 29, 16) });

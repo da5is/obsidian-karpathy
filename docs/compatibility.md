@@ -1,10 +1,14 @@
 # Compatibility and performance checks
 
-Release: 2.2.5 (documentation-only; plugin behavior is 2.2.4). All timing values below are milliseconds.
+Release: 2.2.6. All timing values below are milliseconds.
+
+2.2.6 adds regression coverage for moving clickable tags while preserving source
+Markdown, images, code, and embedded-note tags. Native visual verification of
+this release remains pending; the open Obsidian window was a different vault.
 
 ## Automated and desktop coverage
 
-126 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+127 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test

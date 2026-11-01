@@ -473,6 +473,16 @@ export class KarpathyView extends ItemView {
         }
         catch (error) { this.removeChild(component); throw error; }
         if (!valid()) { this.removeChild(component); return; }
+        const tags = Array.from(content.querySelectorAll<HTMLAnchorElement>("a.tag"))
+          .filter(tag => !tag.closest(".internal-embed, pre, code"));
+        if (tags.length) {
+          const tagRow = surface.createDiv({ cls: "karpathy-entry-tags" });
+          for (const tag of tags) {
+            const paragraph = tag.closest("p");
+            tagRow.appendChild(tag);
+            if (paragraph && !paragraph.textContent?.trim() && !paragraph.querySelector("img, video, audio, iframe, input, .internal-embed")) paragraph.remove();
+          }
+        }
         content.addEventListener("click", event => {
           const target = event.target as Element | null;
           if (!target || target.nodeType !== 1 || typeof target.closest !== "function") return;

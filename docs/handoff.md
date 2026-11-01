@@ -4,11 +4,11 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-10-31, 2.2.5
+## Current snapshot — 2026-11-01, 2.2.6
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
-2.2.5 updates documentation and adds `docs/VAULT_LLM_GUIDE.md`; plugin behavior
-is unchanged from 2.2.4. The automated suite has 126 tests.
+2.2.6 centers stream images and moves rendered tags below the written/rescue
+line without changing source Markdown. The automated suite has 127 tests.
 
 ## Product behavior to preserve
 
@@ -40,7 +40,7 @@ is unchanged from 2.2.4. The automated suite has 126 tests.
 
 ## Validation and outstanding work
 
-126 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
+127 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from

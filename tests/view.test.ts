@@ -695,6 +695,52 @@ test("cursor failure releases loading and subsequent refresh succeeds", async ()
   await view.onClose(); await plugin.store.close();
 });
 
+test("entry edit uses capture actions and saves dated completion with attachments", async context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 10, 1, 12) });
+  const { plugin, view } = fixture();
+  await plugin.store.capture("todo: existing task", new Date(), "edit-actions");
+  await view.onOpen();
+  try {
+    view.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+    const modal = document.querySelector<HTMLElement>(".karpathy-edit-modal")!;
+    assert.equal(modal.querySelector(".karpathy-formatting"), null);
+    const editorView = EditorView.findFromDOM(modal.querySelector<HTMLElement>(".cm-editor")!)!;
+    editorView.dispatch({ selection: { anchor: editorView.state.doc.length } });
+    const actions = modal.querySelector(".karpathy-edit-actions")!;
+    assert.deepEqual([...actions.querySelectorAll("button")].map(button => button.getAttribute("aria-label") ?? button.textContent), ["Attach a file", "Attach a photo", "Mark done", "Save"]);
+    actions.querySelector<HTMLButtonElement>('[aria-label="Attach a file"]')!.click();
+    let picker = modal.querySelector<HTMLInputElement>('input[type="file"]')!;
+    assert.equal(picker.accept, "");
+    assert.equal(picker.multiple, true);
+    picker.dispatchEvent(new Event("cancel"));
+    assert.equal(modal.querySelector('input[type="file"]'), null);
+    actions.querySelector<HTMLButtonElement>('[aria-label="Attach a photo"]')!.click();
+    picker = modal.querySelector<HTMLInputElement>('input[type="file"]')!;
+    assert.equal(picker.accept, "image/*");
+    Object.defineProperty(picker, "files", { value: [new File(["image"], "photo.png", { type: "image/png" })] });
+    picker.dispatchEvent(new Event("change"));
+    const save = actions.querySelector<HTMLButtonElement>(".karpathy-save")!;
+    assert.equal(save.disabled, true);
+    await until(() => !save.disabled);
+    actions.querySelector<HTMLButtonElement>(".karpathy-todo")!.click();
+    const entry = (await plugin.store.entries(plugin.store.files[0]))[0];
+    const draft = plugin.readDraft(plugin.draftKey(entry))!;
+    assert.ok(draft.body.startsWith("done:"));
+    assert.ok(draft.body.includes("![["));
+    assert.ok(draft.body.endsWith("Completed: 2026-11-01"));
+    assert.equal(actions.querySelector<HTMLButtonElement>(".karpathy-todo")!.disabled, true);
+    save.click();
+    await until(() => plugin.editing === 0);
+    const saved = (await plugin.store.entries(plugin.store.files[0]))[0];
+    assert.equal(saved.id, entry.id);
+    assert.equal(saved.body, draft.body);
+    assert.equal(document.querySelector(".karpathy-edit-modal"), null);
+  } finally {
+    for (const draft of plugin["draftOwners"].values()) if ("close" in draft.owner) (draft.owner as any).close();
+    await view.onClose(); await plugin.store.close();
+  }
+});
+
 test("only one capture pane and one entry editor own each persisted draft", async () => {
   const { app, plugin, view } = fixture();
   app.workspace.revealLeaf = async () => {};

@@ -1,5 +1,5 @@
 import { Component, ItemView, MarkdownRenderer, Menu, Modal, Notice, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
-import { CaptureEditor, editorToolbar } from "./editor";
+import { CaptureEditor } from "./editor";
 import { displayDate, relativeDate } from "./dates";
 import { themeTagColor } from "./settings";
 import type KarpathyPlugin from "./main";
@@ -582,6 +582,8 @@ class EntryEditor extends Modal {
   private key: string;
   private saving = false;
   private button!: HTMLButtonElement;
+  private todoButton!: HTMLButtonElement;
+  private attachmentButtons: HTMLButtonElement[] = [];
   private status!: HTMLElement;
   private closed = false;
   private base: string;
@@ -599,7 +601,31 @@ class EntryEditor extends Modal {
     this.titleEl.setText("Edit entry");
     const host = this.contentEl.createDiv({ cls: "karpathy-editor" });
     this.status = this.contentEl.createDiv({ cls: "karpathy-capture-status", attr: { role: "status" } });
-    this.button = this.contentEl.createEl("button", { text: "Save changes", cls: "mod-cta" });
+    const actions = this.contentEl.createDiv({ cls: "karpathy-capture-actions karpathy-edit-actions" });
+    for (const [label, icon, photosOnly] of [["Attach a file", "paperclip", false], ["Attach a photo", "image", true]] as const) {
+      const button = actions.createEl("button", { cls: "karpathy-attach", attr: { type: "button", title: label, "aria-label": label } });
+      setIcon(button, icon);
+      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("click", () => {
+        if (this.saving || this.closed) return;
+        const picker = this.contentEl.createEl("input", { type: "file" });
+        picker.multiple = true;
+        picker.hidden = true;
+        if (photosOnly) picker.accept = "image/*";
+        picker.addEventListener("change", () => {
+          if (!this.closed && !this.saving) this.editor?.attach(Array.from(picker.files ?? []));
+          picker.remove();
+        }, { once: true });
+        picker.addEventListener("cancel", () => picker.remove(), { once: true });
+        picker.click();
+      });
+      this.attachmentButtons.push(button);
+    }
+    this.todoButton = actions.createEl("button", { cls: "karpathy-attach karpathy-todo", attr: { type: "button" } });
+    this.todoButton.addEventListener("mousedown", event => event.preventDefault());
+    this.todoButton.addEventListener("click", () => { if (!this.saving) this.editor?.toggleTodo(); });
+    this.button = actions.createEl("button", { text: "Save", cls: "mod-cta karpathy-save", attr: { type: "button" } });
+    this.button.addEventListener("mousedown", event => event.preventDefault());
     this.button.addEventListener("click", () => { void this.save(); });
     this.editor = new CaptureEditor(host, {
       body: this.draft.body, colors: this.plugin.settings.prefixColors, tripleEnter: false,
@@ -608,17 +634,18 @@ class EntryEditor extends Modal {
       change: body => {
         this.draft.body = body;
         this.plugin.writeDraft(this.key, this.draft);
+        this.updateActions();
       },
       save: () => { void this.save(); },
       upload: files => Promise.all(files.map(file => this.plugin.store.attachment(file, new Date(this.entry.created ?? this.entry.timestamp), this.base))),
       error: error => this.plugin.report(error),
       scope: this.scope,
       busy: busy => {
-        this.button.disabled = busy || this.saving;
+        this.updateActions();
         this.status.setText(busy ? "Saving attachments..." : "Ctrl/Cmd+Enter to save. Closing keeps your draft.");
       }
     });
-    editorToolbar(this.contentEl, this.editor);
+    this.updateActions();
     const discard = this.contentEl.createEl("button", { text: "Discard local draft", cls: "karpathy-discard" });
     discard.addEventListener("click", () => {
       if (this.saving || this.editor?.pending) { new Notice("Wait for saving to finish."); return; }
@@ -639,12 +666,22 @@ class EntryEditor extends Modal {
     this.status.setText("Ctrl/Cmd+Enter to save. Closing keeps your draft.");
     this.editor.focus();
   }
+  private updateActions(): void {
+    this.button.disabled = this.saving || !!this.editor?.pending || !this.editor?.body.trim();
+    for (const button of this.attachmentButtons) button.disabled = this.saving || !this.editor;
+    const prefix = entryPrefix(this.editor?.body ?? "")?.[1].toLowerCase();
+    const label = prefix === "done" ? "Completed" : prefix === "todo" ? "Mark done" : "Add todo";
+    this.todoButton.disabled = this.saving || !this.editor || prefix === "done";
+    this.todoButton.title = label;
+    this.todoButton.setAttribute("aria-label", label);
+    setIcon(this.todoButton, prefix === "todo" || prefix === "done" ? "circle-check" : "list-todo");
+  }
   private async save(): Promise<void> {
     if (!this.editor || this.saving) return;
     if (this.editor.pending) { new Notice("Wait for attachments to finish."); return; }
     if (!this.editor.body.trim()) { new Notice("An entry cannot be empty."); return; }
     this.saving = true;
-    this.button.disabled = true;
+    this.updateActions();
     this.editor.lock(true);
     try {
       await this.plugin.store.update(this.draft.original ?? this.entry, this.editor.body);
@@ -655,7 +692,7 @@ class EntryEditor extends Modal {
     } catch (error) { this.plugin.report(error); }
     finally {
       this.saving = false;
-      this.button.disabled = false;
+      this.updateActions();
       this.editor.lock(false);
       this.finishClose();
     }

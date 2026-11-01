@@ -118,6 +118,7 @@
 .karpathy-capture-actions .karpathy-attach { display: flex; align-items: center; justify-content: center; min-width: 44px; padding: 10px; border: none; box-shadow: none; background: transparent; color: var(--text-muted); }
 .karpathy-capture-actions .karpathy-attach:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 .karpathy-attach svg { width: 20px; height: 20px; }
+.karpathy-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
 
 .karpathy-editor {
   border: 1px solid var(--background-modifier-border);

@@ -74,3 +74,5 @@ See [portable setup and native test-vault instructions](docs/development.md) and
 The production bundle is `main.js`. Settings, drafts, vault notes, and dependencies are not part of this repository.
 
 MIT licensed.
+
+Prefixes at the start of loaded stream entries are automatically registered with theme colors, including notes created on other devices. Discovery runs as entries are displayed (including paging and search), preserves custom colors, and does not modify note files.

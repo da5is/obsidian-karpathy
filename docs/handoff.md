@@ -4,12 +4,12 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-01, 2.2.10
+## Current snapshot — 2026-11-01, 2.2.11
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 2.2.8 removes hashtag pills and assigns stable automatic colors from the prefix
 theme palette. Tag colors ignore custom prefix overrides and encounter order.
-Images stay centered and tags remain below the written/rescue line. The automated suite has 131 tests.
+Images stay centered and tags remain below the written/rescue line. The automated suite has 133 tests.
 
 2.2.9 adds a capture-toolbar todo button: prepend `todo:`, then change it to
 `done:` and append a local `Completed: YYYY-MM-DD` date. Done drafts disable the
@@ -19,6 +19,10 @@ verification of the new button remains pending.
 2.2.10 replaces the Edit formatting toolbar with the same file/photo attachment,
 todo/done, and Save row as capture. Draft retention and discard remain available.
 The modal action integration is covered by tests; native visual verification is pending.
+
+2.2.11 learns leading prefixes from loaded stream entries, including synced notes,
+in batched settings writes before rendering. Existing colors and note bodies are
+preserved. Settings write failure reports the error but allows notes to display.
 
 ## Product behavior to preserve
 
@@ -42,7 +46,7 @@ The modal action integration is covered by tests; native visual verification is 
   optional network title lookup, otherwise the bare URL. Preserve ordinary rich
   selections and code/link-destination pastes. Physical iOS format coverage is
   not established by mocked clipboard tests.
-- Prefix defaults: `todo:`, `read:`, `buy:`, `ref:`. Learn new prefixes on saving;
+- Prefix defaults: `todo:`, `read:`, `buy:`, `ref:`. Learn new prefixes on saving and loading stream entries;
   use theme colors. Prefixes are plain Markdown text, not generated metadata.
 - Device-local IndexedDB, bounded stream/body/search caches, batched indexing,
   prewarmed/shared wikilink suggestions, and background same-stat verification.
@@ -50,7 +54,7 @@ The modal action integration is covered by tests; native visual verification is 
 
 ## Validation and outstanding work
 
-131 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
+133 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from

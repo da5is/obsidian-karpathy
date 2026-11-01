@@ -12,6 +12,52 @@ import { DEFAULT_SETTINGS, parseSettings, themePrefixColor, themeTagColor } from
 
 after(closeDOM);
 
+test("loading synced entries learns prefixes in one batch without overwriting colors or notes", async () => {
+  const { plugin, view } = fixture();
+  plugin.settings.prefixColors.work = "#123456";
+  const bodies = ["done: synced task", "DONE: another task", "research: new topic", "work: custom color", "https://example.com", "Text with inline: punctuation"];
+  for (const [index, body] of bodies.entries()) await plugin.store.capture(body, new Date(2026, 10, 1, 12, index), `synced-${index}`);
+  let writes = 0;
+  plugin.saveData = async () => { writes++; };
+  await view.onOpen();
+  try {
+    assert.equal(writes, 1);
+    assert.equal(plugin.settings.prefixColors.done, themePrefixColor("done"));
+    assert.equal(plugin.settings.prefixColors.research, themePrefixColor("research"));
+    assert.equal(plugin.settings.prefixColors.work, "#123456");
+    assert.equal(plugin.settings.prefixColors.https, undefined);
+    assert.equal(plugin.settings.prefixColors.inline, undefined);
+    assert.equal(view.contentEl.querySelector('[data-entry-id="synced-0"] .karpathy-prefix')?.textContent, "done:");
+    await view.refresh(true);
+    assert.equal(writes, 1);
+    for (const file of plugin.store.files) {
+      const entry = (await plugin.store.entries(file))[0];
+      assert.equal(entry.body, bodies[Number(entry.id.split("-")[1])]);
+    }
+    await plugin.store.capture("later: arrived after opening", new Date(2026, 10, 2), "later");
+    await view.refresh(true);
+    assert.equal(plugin.settings.prefixColors.later, themePrefixColor("later"));
+    assert.equal(writes, 2);
+  } finally { await view.onClose(); await plugin.store.close(); }
+});
+
+test("prefix discovery failure still renders entries and retries on refresh", async () => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("done: synced task", new Date(), "synced");
+  const errors: unknown[] = [];
+  plugin.report = error => { errors.push(error); };
+  plugin.saveData = async () => { throw new Error("settings unavailable"); };
+  await view.onOpen();
+  try {
+    assert.equal(errors.length, 1);
+    assert.ok(view.contentEl.querySelector('[data-entry-id="synced"]'));
+    assert.equal(plugin.settings.prefixColors.done, undefined);
+    plugin.saveData = async () => {};
+    await view.refresh(true);
+    assert.equal(plugin.settings.prefixColors.done, themePrefixColor("done"));
+  } finally { await view.onClose(); await plugin.store.close(); }
+});
+
 test("capture todo button adds a prefix, completes with a local date, and saves the result", async context => {
   context.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 10, 1, 23, 30) });
   const { plugin, view } = fixture();

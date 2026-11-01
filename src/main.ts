@@ -213,11 +213,19 @@ export default class KarpathyPlugin extends Plugin {
   }
 
   rememberPrefix(body: string): Promise<void> {
-    const prefix = entryPrefix(body)?.[1].toLowerCase();
-    if (!prefix) return Promise.resolve();
-    if (Object.prototype.hasOwnProperty.call(this.settings.prefixColors, prefix)) return Promise.resolve();
+    return this.rememberPrefixes([body]);
+  }
+  rememberPrefixes(bodies: Iterable<string>): Promise<void> {
+    const prefixes = new Set<string>();
+    for (const body of bodies) {
+      const prefix = entryPrefix(body)?.[1].toLowerCase();
+      if (prefix && !Object.prototype.hasOwnProperty.call(this.settings.prefixColors, prefix)) prefixes.add(prefix);
+    }
+    if (!prefixes.size) return Promise.resolve();
     return this.updateSettings(next => {
-      if (!Object.prototype.hasOwnProperty.call(next.prefixColors, prefix)) next.prefixColors[prefix] = themePrefixColor(prefix);
+      for (const prefix of prefixes) {
+        if (!Object.prototype.hasOwnProperty.call(next.prefixColors, prefix)) next.prefixColors[prefix] = themePrefixColor(prefix);
+      }
     });
   }
 

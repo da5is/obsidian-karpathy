@@ -404,6 +404,10 @@ export class KarpathyView extends ItemView {
   }
 
   private async renderRows(valid: () => boolean): Promise<void> {
+    if (!valid()) return;
+    await this.plugin.rememberPrefixes(this.items.map(entry => entry.body)).catch(error => this.plugin.report(error));
+    if (!valid()) return;
+    this.editor?.updateColors(this.plugin.settings.prefixColors);
     const keep = new Set(this.items.map(entryKey));
     for (const [id, row] of this.rows) {
       if (!keep.has(id)) { row.element.remove(); this.removeChild(row.component); this.rows.delete(id); }

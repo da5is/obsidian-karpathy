@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.10. All timing values below are milliseconds.
+Release: 2.2.11. All timing values below are milliseconds.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
@@ -21,9 +21,13 @@ Native Obsidian visual verification of the new toolbar button remains pending.
 dated completion, draft persistence, and saving with stable entry identity. Native
 visual verification remains pending.
 
+2.2.11 verifies batched discovery of synced prefixes, case normalization, preserved
+custom colors and note bodies, no redundant writes, later arrivals, and retry after
+settings failure. Physical cross-device sync verification remains pending.
+
 ## Automated and desktop coverage
 
-131 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+133 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test

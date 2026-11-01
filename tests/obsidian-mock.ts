@@ -87,6 +87,7 @@ export class MemoryVault {
   getFiles() { this.listings++; return [...this.files.values()].filter((file): file is TFile => file instanceof TFile); }
   getMarkdownFiles() { return [...this.files.values()].filter((file): file is TFile => file instanceof TFile && file.extension === "md"); }
   getAbstractFileByPath(path: string) { return this.files.get(path) ?? null; }
+  getResourcePath(file: TFile) { return `app://mock/${encodeURIComponent(file.path)}`; }
   private linkToParent(file: TAbstractFile) {
     const parent = this.files.get(file.path.slice(0, file.path.lastIndexOf("/")));
     if (parent instanceof TFolder) parent.children.push(file);
@@ -183,6 +184,9 @@ export class ItemView extends Component {
   constructor(public leaf: { app: App }) { super(); this.app = leaf.app; document.body.appendChild(this.contentEl); }
 }
 export class Plugin extends Component {
+  private data: unknown = null;
+  async saveData(data: unknown) { this.data = structuredClone(data); }
+  async loadData() { return structuredClone(this.data); }
   constructor(public app: App, public manifest: unknown) { super(); }
 }
 export class Modal extends Component {

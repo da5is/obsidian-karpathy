@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.8. All timing values below are milliseconds.
+Release: 2.2.9. All timing values below are milliseconds.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
@@ -13,9 +13,13 @@ Native visual verification remains pending.
 equivalence, the prefix palette, and independence from prefix customization.
 Native visual verification of the plain hashtag styling remains pending.
 
+2.2.9 verifies capture todo/done transitions, local completion dates, duplicate
+prevention, Undo, draft persistence, saved Markdown, prefix matching, and locking.
+Native Obsidian visual verification of the new toolbar button remains pending.
+
 ## Automated and desktop coverage
 
-128 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+130 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test

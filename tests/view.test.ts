@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { EditorView } from "@codemirror/view";
+import { undo } from "@codemirror/commands";
 import { App, closeDOM, MarkdownRenderer, Menu, Platform } from "./obsidian-mock";
 import { shell } from "./electron-mock";
 import KarpathyPlugin from "../src/main";
@@ -10,6 +11,57 @@ import { CaptureEditor, editorToolbar } from "../src/editor";
 import { DEFAULT_SETTINGS, parseSettings, themePrefixColor, themeTagColor } from "../src/settings";
 
 after(closeDOM);
+
+test("capture todo button adds a prefix, completes with a local date, and saves the result", async context => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date(2026, 10, 1, 23, 30) });
+  const { plugin, view } = fixture();
+  await view.onOpen();
+  try {
+    const editor = view["editor"]!;
+    const button = view.contentEl.querySelector<HTMLButtonElement>(".karpathy-capture-actions .karpathy-todo")!;
+    assert.equal(button.getAttribute("aria-label"), "Add todo");
+    button.click();
+    assert.equal(editor.body, "todo: ");
+    editor.insert("Ship it\n![[photo.png]]");
+    assert.equal(button.getAttribute("aria-label"), "Mark done");
+    button.click();
+    const completed = "done: Ship it\n![[photo.png]]\n\nCompleted: 2026-11-01";
+    assert.equal(editor.body, completed);
+    assert.equal(document.activeElement, editor.view.contentDOM);
+    assert.equal(button.disabled, true);
+    button.click();
+    assert.equal(editor.body, completed);
+    assert.equal(plugin.readDraft(plugin.draftKey())?.body, completed);
+    undo(editor.view);
+    assert.equal(editor.body, "todo: Ship it\n![[photo.png]]");
+    assert.equal(button.disabled, false);
+    button.click();
+    view.contentEl.querySelector<HTMLButtonElement>(".karpathy-save")!.click();
+    await until(() => !view["saving"] && editor.body === "");
+    assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].body, completed);
+    assert.equal(button.getAttribute("aria-label"), "Add todo");
+  } finally { await view.onClose(); }
+});
+
+test("todo action recognizes only the leading prefix, preserves other text, and respects editor locking", async () => {
+  const { view } = fixture();
+  await view.onOpen();
+  try {
+    const editor = view["editor"]!;
+    editor.setBody("read: a todo: example");
+    editor.toggleTodo();
+    assert.equal(editor.body, "todo: read: a todo: example");
+    editor.setBody("TODO: existing\nsecond line");
+    editor.lock(true);
+    editor.toggleTodo();
+    assert.equal(editor.body, "TODO: existing\nsecond line");
+    editor.lock(false);
+    editor.toggleTodo(new Date(2026, 0, 2));
+    assert.equal(editor.body, "done: existing\nsecond line\n\nCompleted: 2026-01-02");
+    editor.toggleTodo();
+    assert.equal(editor.body, "done: existing\nsecond line\n\nCompleted: 2026-01-02");
+  } finally { await view.onClose(); }
+});
 
 test("hashtag colors are stable, case-insensitive, and use the prefix theme palette", () => {
   assert.equal(themeTagColor("#ai"), "var(--color-orange, var(--text-accent))");

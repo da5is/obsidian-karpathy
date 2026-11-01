@@ -25,6 +25,7 @@ export class KarpathyView extends ItemView {
   private draft: Draft | null = null;
   private draftKey = "";
   private saveButton!: HTMLButtonElement;
+  private todoButton!: HTMLButtonElement;
   private attachmentButtons: HTMLButtonElement[] = [];
   private captureStatus!: HTMLElement;
   private subtitle!: HTMLElement;
@@ -101,6 +102,11 @@ export class KarpathyView extends ItemView {
       button.addEventListener("click", () => this.attachFiles(photosOnly));
       this.attachmentButtons.push(button);
     }
+    this.todoButton = captureActions.createEl("button", { cls: "karpathy-attach karpathy-todo", attr: { type: "button" } });
+    this.todoButton.addEventListener("mousedown", event => event.preventDefault());
+    this.todoButton.addEventListener("click", () => {
+      if (!this.saving) this.editor?.toggleTodo();
+    });
     this.saveButton = captureActions.createEl("button", { text: "Save", cls: "mod-cta karpathy-save", attr: { type: "button" } });
     this.saveButton.addEventListener("mousedown", event => event.preventDefault());
     this.saveButton.addEventListener("click", () => { this.editor?.focus(); void this.save(); });
@@ -212,6 +218,12 @@ export class KarpathyView extends ItemView {
     const uploading = !!this.editor?.pending;
     this.saveButton.disabled = this.saving || uploading || !this.editor?.body.trim();
     for (const button of this.attachmentButtons) button.disabled = this.saving || !this.editor;
+    const prefix = entryPrefix(this.editor?.body ?? "")?.[1].toLowerCase();
+    const todoLabel = prefix === "done" ? "Completed" : prefix === "todo" ? "Mark done" : "Add todo";
+    this.todoButton.disabled = this.saving || !this.editor || prefix === "done";
+    this.todoButton.title = todoLabel;
+    this.todoButton.setAttribute("aria-label", todoLabel);
+    setIcon(this.todoButton, prefix === "todo" || prefix === "done" ? "circle-check" : "list-todo");
     const large = (this.editor?.view.state.doc.length ?? 0) > 100000;
     this.captureStatus.setText(this.saving ? "Saving..." : uploading ? "Saving attachments..." : large ? "Large draft: source editing, without line wrapping." : "");
     this.captureStatus.hidden = !this.saving && !uploading && !large;

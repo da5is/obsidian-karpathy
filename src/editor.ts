@@ -256,6 +256,22 @@ export class CaptureEditor {
     this.view.dispatch(this.view.state.replaceSelection(text));
     this.focus();
   }
+  toggleTodo(now = new Date()): void {
+    if (this.destroyed || this.view.state.readOnly) return;
+    const prefix = entryPrefix(this.body)?.[1].toLowerCase();
+    if (prefix === "done") return;
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const changes = this.view.state.changes(prefix === "todo" ? [
+      { from: 0, to: 5, insert: "done:" },
+      { from: this.body.length, insert: `\n\nCompleted: ${date}` }
+    ] : { from: 0, insert: "todo: " });
+    this.view.dispatch({
+      changes,
+      selection: this.view.state.selection.map(changes, prefix === "todo" ? -1 : 1),
+      userEvent: "input"
+    });
+    this.focus();
+  }
   wrap(before: string, after = before): boolean {
     if (this.view.state.readOnly) return true;
     const selection = this.view.state.selection.main;

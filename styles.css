@@ -203,6 +203,7 @@
   padding: 0;
   margin: 0;
   font: inherit;
+  font-weight: var(--bold-weight, 700);
   color: var(--karpathy-tag-color, var(--text-accent));
   text-decoration: none;
 }

@@ -4,7 +4,7 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-01, 2.2.11
+## Current snapshot — 2026-11-01, 2.2.12
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 2.2.8 removes hashtag pills and assigns stable automatic colors from the prefix
@@ -23,6 +23,9 @@ The modal action integration is covered by tests; native visual verification is 
 2.2.11 learns leading prefixes from loaded stream entries, including synced notes,
 in batched settings writes before rendering. Existing colors and note bodies are
 preserved. Settings write failure reports the error but allows notes to display.
+
+2.2.12 makes footer hashtags bold using the same theme weight as leading colon
+prefixes, including hover. Colors and the muted tags label remain unchanged.
 
 ## Product behavior to preserve
 

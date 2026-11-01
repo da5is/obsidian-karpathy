@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.11. All timing values below are milliseconds.
+Release: 2.2.12. All timing values below are milliseconds.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
@@ -24,6 +24,10 @@ visual verification remains pending.
 2.2.11 verifies batched discovery of synced prefixes, case normalization, preserved
 custom colors and note bodies, no redundant writes, later arrivals, and retry after
 settings failure. Physical cross-device sync verification remains pending.
+
+2.2.12 applies the prefix bold-weight token to footer hashtags in normal and hover
+states. The existing 133 tests and production build pass; native visual verification
+of the font-weight change remains pending.
 
 ## Automated and desktop coverage
 

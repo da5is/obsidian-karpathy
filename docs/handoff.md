@@ -4,11 +4,12 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-01, 2.2.7
+## Current snapshot — 2026-11-01, 2.2.8
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
-2.2.7 labels the tag row “tags:” and separates multiple tags with commas.
-Images stay centered and tags remain below the written/rescue line. The automated suite has 127 tests.
+2.2.8 removes hashtag pills and assigns stable automatic colors from the prefix
+theme palette. Tag colors ignore custom prefix overrides and encounter order.
+Images stay centered and tags remain below the written/rescue line. The automated suite has 128 tests.
 
 ## Product behavior to preserve
 
@@ -40,7 +41,7 @@ Images stay centered and tags remain below the written/rescue line. The automate
 
 ## Validation and outstanding work
 
-127 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
+128 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from

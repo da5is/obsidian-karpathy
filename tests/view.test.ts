@@ -7,13 +7,23 @@ import KarpathyPlugin from "../src/main";
 import { Store } from "../src/store";
 import { KarpathyView } from "../src/view";
 import { CaptureEditor, editorToolbar } from "../src/editor";
-import { DEFAULT_SETTINGS, parseSettings, themePrefixColor } from "../src/settings";
+import { DEFAULT_SETTINGS, parseSettings, themePrefixColor, themeTagColor } from "../src/settings";
 
 after(closeDOM);
+
+test("hashtag colors are stable, case-insensitive, and use the prefix theme palette", () => {
+  assert.equal(themeTagColor("#ai"), "var(--color-orange, var(--text-accent))");
+  assert.equal(themeTagColor("#AI"), themeTagColor("ai"));
+  for (const prefix of ["todo", "read", "buy", "ref"]) assert.equal(themeTagColor(`#${prefix}`), themePrefixColor(prefix));
+  const first = ["#ai", "#work/project", "#café"].map(themeTagColor);
+  assert.deepEqual(["#café", "#work/project", "#ai"].map(themeTagColor).reverse(), first);
+  assert.equal(themeTagColor("#cafe\u0301"), themeTagColor("#café"));
+});
 
 test("stream moves clickable tags below metadata without changing saved Markdown or embedded tags", async context => {
   const { plugin, view } = fixture();
   const body = "Text #ai and #work/project\n\n#last";
+  plugin.settings.prefixColors.ai = "#123456";
   await plugin.store.capture(body, new Date(), "tag-layout");
   let clicks = 0;
   context.mock.method(MarkdownRenderer, "render", async (_app: App, _body: string, element: HTMLElement) => {
@@ -24,6 +34,7 @@ test("stream moves clickable tags below metadata without changing saved Markdown
   try {
     const row = view.contentEl.querySelector(".karpathy-entry-tags")!;
     assert.equal(row.textContent, "tags: #ai, #work/project, #photo, #last");
+    assert.equal(row.querySelector<HTMLAnchorElement>("a")!.style.getPropertyValue("--karpathy-tag-color"), themeTagColor("#ai"));
     assert.deepEqual([...row.querySelectorAll("a")].map(tag => tag.textContent), ["#ai", "#work/project", "#photo", "#last"]);
     row.querySelector<HTMLAnchorElement>("a")!.click();
     assert.equal(clicks, 1);

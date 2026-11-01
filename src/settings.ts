@@ -17,6 +17,16 @@ export function themePrefixColor(prefix: string): string {
   return variable ? `var(--color-${variable}, var(--text-accent))` : "var(--text-accent)";
 }
 
+// Stable across notes, devices, and encounter order; never uses prefix overrides.
+export function themeTagColor(tag: string): string {
+  const value = tag.trim().replace(/^#/, "").normalize("NFC").toLowerCase();
+  if (["todo", "read", "buy", "ref"].includes(value)) return themePrefixColor(value);
+  const palette = ["orange", "green", "purple", "blue"];
+  let hash = 0;
+  for (const character of value) hash = (Math.imul(hash, 31) + character.codePointAt(0)!) >>> 0;
+  return `var(--color-${palette[hash % palette.length]}, var(--text-accent))`;
+}
+
 function resolvedHex(parent: HTMLElement, color: string): string {
   const probe = parent.createSpan();
   probe.style.color = color;

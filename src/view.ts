@@ -1,6 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, Menu, Modal, Notice, Scope, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import { CaptureEditor, editorToolbar } from "./editor";
 import { displayDate, relativeDate } from "./dates";
+import { themeTagColor } from "./settings";
 import type KarpathyPlugin from "./main";
 import type { Draft } from "./main";
 import { Cursor, entryPath, Entry, entryPrefix, parseEntries, taskRanges, toggleTask, uniqueId } from "./model";
@@ -481,6 +482,7 @@ export class KarpathyView extends ItemView {
           for (const tag of tags) {
             const paragraph = tag.closest("p");
             if (tag !== tags[0]) tagRow.append(", ");
+            tag.style.setProperty("--karpathy-tag-color", themeTagColor(tag.textContent ?? ""));
             tagRow.appendChild(tag);
             if (paragraph && !paragraph.textContent?.trim() && !paragraph.querySelector("img, video, audio, iframe, input, .internal-embed")) paragraph.remove();
           }

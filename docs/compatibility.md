@@ -1,6 +1,6 @@
 # Compatibility and performance checks
 
-Release: 2.2.7. All timing values below are milliseconds.
+Release: 2.2.8. All timing values below are milliseconds.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
@@ -9,9 +9,13 @@ this release remains pending; the open Obsidian window was a different vault.
 2.2.7 extends the tag-row assertion to cover its label and comma separators.
 Native visual verification remains pending.
 
+2.2.8 verifies stable, case-insensitive hashtag colors, canonical Unicode
+equivalence, the prefix palette, and independence from prefix customization.
+Native visual verification of the plain hashtag styling remains pending.
+
 ## Automated and desktop coverage
 
-127 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
+128 automated tests pass on Windows/Node, including CodeMirror, simulated iOS
 Return behavior, interrupted writes, unavailable IndexedDB, concurrent settings,
 exclusive drafts, attachment limits, and storage diagnostics. TypeScript and
 production bundling pass. Production uses Obsidian's CodeMirror modules; test

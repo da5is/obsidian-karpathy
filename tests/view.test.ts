@@ -8,7 +8,7 @@ import KarpathyPlugin from "../src/main";
 import { Store } from "../src/store";
 import { KarpathyView } from "../src/view";
 import { CaptureEditor, editorToolbar } from "../src/editor";
-import { entryPath } from "../src/model";
+import { entryPath, serializeEntry } from "../src/model";
 import { DEFAULT_SETTINGS, parseSettings, themePrefixColor, themeTagColor } from "../src/settings";
 
 after(closeDOM);
@@ -1017,7 +1017,35 @@ test("vault file events are registered only after the workspace layout is ready"
   await plugin.onload();
   try {
     assert.deepEqual(registered, []);
+    let refreshed = 0;
+    plugin.changed = () => { refreshed++; };
     ready!();
     assert.deepEqual(registered.sort(), ["create", "delete", "modify", "rename"]);
+    // Views restored before the vault loaded must refresh once files are indexed.
+    assert.equal(refreshed, 1);
   } finally { await plugin.store.close(); await plugin.links.close(); }
+});
+
+test("a stream opened before the vault finishes loading shows entries once layout is ready", async () => {
+  const app = new App();
+  let ready: (() => void) | undefined;
+  (app.vault as any).on = () => ({});
+  (app.metadataCache as any).on = () => ({});
+  (app.workspace as any).on = () => ({});
+  app.workspace.onLayoutReady = callback => { ready = callback; };
+  const plugin = new KarpathyPlugin(app as any, { id: "karpathy" });
+  for (const method of ["registerDomEvent", "registerEvent", "addCommand", "registerView", "addSettingTab", "addRibbonIcon"])
+    (plugin as any)[method] = () => ({});
+  await plugin.onload();
+  // Obsidian restores the stream tab while the vault is still reporting files.
+  const view = new KarpathyView({ app }, plugin);
+  (app.workspace as any).getLeavesOfType = () => [{ view }];
+  await view.onOpen();
+  const date = new Date(2026, 10, 2, 9);
+  await app.vault.create(entryPath("Karpathy", date, "late"), serializeEntry("late", date.toISOString(), "Loaded with the vault"));
+  try {
+    assert.equal(view.contentEl.querySelector('[data-entry-id="late"]'), null);
+    ready!();
+    await until(() => !!view.contentEl.querySelector('[data-entry-id="late"]'));
+  } finally { await view.onClose(); await plugin.store.close(); await plugin.links.close(); }
 });

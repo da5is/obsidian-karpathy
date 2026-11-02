@@ -1,6 +1,11 @@
 # Compatibility and performance checks
 
-Release: 2.3.1 (documentation-only relative to 2.3.0). All timing values below are milliseconds.
+Release: 2.3.2. All timing values below are milliseconds.
+
+2.3.2 fixes an empty stream after Obsidian starts (KAR-030): a stream tab
+restored before the vault finished loading was not refreshed when entries were
+indexed. 148 automated tests and the build pass on Linux/Node 26.13; a new test
+reproduces the empty view and fails without the fix. Native confirmation pending.
 
 2.3.0 (KAR-016–KAR-029) was tested on Linux/Node 26: 147 automated tests,
 TypeScript, and the production build pass. Measured: minified `main.js` is 132 KB,

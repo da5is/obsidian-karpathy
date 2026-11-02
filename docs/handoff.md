@@ -4,19 +4,24 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-02, 2.3.1
+## Current snapshot — 2026-11-02, 2.3.2
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 The tag `known-good-2.2.13` marks the last release before the 2.3.0
 performance/usability pass; revert to it if 2.3.0 misbehaves natively.
 
 2.3.1 is documentation-only relative to 2.3.0 (backlog, AGENTS.md, handoff and
-development instructions). Later `main` commits that only change documentation
-are intentionally unreleased; the next code release is 2.3.2.
+development instructions).
+
+2.3.2 fixes a 2.3.0 regression (KAR-030): a stream tab restored at launch stayed
+empty until something was captured, because nothing refreshed it after the
+vault finished loading. Any view-visible startup change must keep the
+layout-ready refresh. 148 automated tests pass; native confirmation pending.
 
 **Recommended next step:** on a machine with Obsidian desktop, generate a fresh
-test vault and run smoke checks 1–12 in `docs/development.md`, prioritizing 9–12
-(filters, Done, Undo, highlights, warm startup, macOS/Linux file paste). 2.3.0
+test vault and run smoke checks 1–13 in `docs/development.md`, prioritizing 9–13
+(filters, Done, Undo, highlights, warm startup, macOS/Linux file paste). Confirm
+a stream tab left open at quit shows entries immediately after relaunch (KAR-030). 2.3.0
 changed startup event timing (KAR-017), so confirm entries edited while
 Obsidian was closed still appear updated after launch. Record results in
 `docs/compatibility.md`; if startup or Undo misbehaves, revert to
@@ -94,8 +99,8 @@ physical keyboard autocorrection remains to be verified on mobile.
 
 ## Validation and outstanding work
 
-147 automated tests, TypeScript, and production bundling pass on Linux/Node 26
-for 2.3.0 (earlier releases: Windows/Node 24).
+148 automated tests, TypeScript, and production bundling pass on Linux/Node 26
+for 2.3.2 (earlier releases: Windows/Node 24).
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from

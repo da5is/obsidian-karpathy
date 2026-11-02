@@ -138,6 +138,9 @@ export default class KarpathyPlugin extends Plugin {
         this.fileChanged(file, oldPath);
       }));
       this.store.reindex();
+      // A stream restored with the workspace may have rendered before the vault
+      // finished loading (no entries yet); refresh it now that files are known.
+      this.changed();
       void this.store.prune().catch(error => console.warn("[karpathy] Could not prune the local index", error));
       void this.links.prepare().then(() => this.links.reconcile()).catch(error => this.report(error));
       this.applySidebarHiding();

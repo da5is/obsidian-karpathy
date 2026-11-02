@@ -56,6 +56,13 @@ Intentional behavior changes in 2.3.0 that users may notice:
 - **KAR-029 (usability): Search feedback.** Highlight matched terms; stop ISO
   timestamps and paths from matching nearly every entry for year-like terms.
 
+- **KAR-030 (P1, user-reported regression in 2.3.0; fixed in 2.3.2): Empty
+  stream after launch.** A stream tab restored with the workspace rendered before
+  the vault finished loading, when no entry files were known. KAR-017 removed the
+  load-time create events that used to refresh it, so the stream stayed empty
+  until the next capture. The layout-ready reindex now refreshes open views.
+  Regression test opens a view before layout readiness. Native check pending.
+
 ## Outstanding validation work — updated 2026-11-02, 2.3.0
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.

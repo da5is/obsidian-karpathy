@@ -16,7 +16,7 @@ npm run build
 
 A clean source export was verified with a fresh dependency install, all 120 tests,
 the build, and fixture generation on Windows/Node 24 for 2.2.2. The 2.3.0 suite
-(147 tests) and build were run on Linux with Node 26. macOS/Linux
+(147 tests; 148 in 2.3.2) and build were run on Linux with Node 26. macOS/Linux
 portability has been reviewed but not executed on those operating systems.
 
 No Obsidian installation, personal vault, credentials, or previous chat is needed
@@ -83,6 +83,8 @@ from mocked tests. If the host is unavailable, state that gap explicitly.
 11. Reload Obsidian on a larger vault and confirm the stream appears from the
     warm index without re-reading every entry (startup create burst ignored).
 12. On macOS/Linux, copy files in Finder or the file manager and paste them.
+13. Quit Obsidian with the stream tab open, relaunch, and confirm entries appear
+    without capturing anything.
 
 A narrow desktop window does not validate iPhone/iPad/Android. On physical
 mobile test soft keyboards/IME, photo/file selection, background/resume, cache

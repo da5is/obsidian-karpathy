@@ -2,7 +2,8 @@
 
 ## Fresh checkout
 
-Install Git and Node.js 24 (the Windows checks used Node 24.22.1). GitHub CLI is
+Install Git and Node.js 24 (the Windows checks used Node 24.22.1; 2.3.0 was
+also tested with Node 26.13 on Linux—record the version you use). GitHub CLI is
 needed only for publishing, not for building or testing. From any source folder:
 
 ```sh
@@ -75,6 +76,13 @@ from mocked tests. If the host is unavailable, state that gap explicitly.
    source app: not all copy operations expose a title.
 7. Paste/attach a local image and file. Verify links, preview, and monthly folder.
 8. Check sidebar-toggle command, storage health, and a native pop-out window.
+9. Click a `todo:` prefix and a tag to filter; Ctrl/Cmd-click a tag for Obsidian
+   search. Press Done on a `todo:` row, then Rescue and Delete with Undo; inspect
+   the Markdown and confirm the deleted note returns at its original path.
+10. Search a word and check highlights in light and dark themes.
+11. Reload Obsidian on a larger vault and confirm the stream appears from the
+    warm index without re-reading every entry (startup create burst ignored).
+12. On macOS/Linux, copy files in Finder or the file manager and paste them.
 
 A narrow desktop window does not validate iPhone/iPad/Android. On physical
 mobile test soft keyboards/IME, photo/file selection, background/resume, cache
@@ -97,6 +105,13 @@ Run tests/build, commit, push main, then publish against that exact commit:
 gh release create VERSION main.js manifest.json styles.css --target COMMIT --title "Karpathy VERSION" --notes-file RELEASE_NOTES.md
 ```
 
-Use a temporary/untracked notes file. Download release assets to a fresh temporary
-directory and compare SHA-256 hashes with the build. Never publish notes,
+Use a temporary/untracked notes file. Download release assets into a new, empty
+temporary directory (`gh release download VERSION --dir NEW_DIR`) and compare
+SHA-256 hashes with the build; avoid wildcard deletes to clean up. Never publish notes,
 settings, test-vault files, or cached indexes. Verify a clean Git working tree.
+
+Before a broad or risky change, mark the last good release commit so it is easy
+to return to, e.g. `git tag -a known-good-2.2.13 COMMIT -m "..."` and
+`git push origin known-good-2.2.13`. To revert, deploy the three assets from
+that tag's release (or check out the tag and build) into the test vault.
+Documentation-only releases still increment all version metadata.

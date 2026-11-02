@@ -15,7 +15,7 @@ standalone guide for agents working on vault content, not repository code.
 
 ## Build and Development
 
-Use Node.js 24. `npm ci` installs locked dependencies; `npm test` runs the suite;
+Use Node.js 24 (record the version actually used if different). `npm ci` installs locked dependencies; `npm test` runs the suite;
 `npm run build` type-checks and bundles; `npm run dev` watches without deploying.
 
 After building, `node scripts/create-test-vault.mjs "../karpathy-test-vault"`
@@ -45,13 +45,18 @@ changes where useful.
 
 Default: commit, push `main`, and publish a BRAT-compatible release without another
 confirmation. Review/planning/local-only user requests override this. Increment all
-version metadata and verify published asset hashes against the tested build.
+version metadata and verify published asset hashes against the tested build;
+download assets into a new empty directory rather than deleting files to clean up.
+Before a broad or risky pass, push an annotated `known-good-VERSION` tag on the last
+good release (currently `known-good-2.2.13`). Record new findings as KAR items in
+`docs/backlog.md` with status and pending native checks.
 Never include unrelated changes or credentials.
 
 ## Data Safety
 
 Preserve entry identity, YAML properties, attachment links, atomic local writes,
-and bounded caches/rendering. Rescue updates in place; no version-1 conversion.
+and bounded caches/rendering. Register vault event handlers after layout readiness;
+undo/restore must never overwrite an existing file. Rescue updates in place; no version-1 conversion.
 Never commit notes, settings, drafts, generated bundles, or `.release-work/`.
 Do not depend on earlier chats or ignored benchmark helpers.
 

@@ -5,14 +5,25 @@
 Baseline tagged `known-good-2.2.13` for easy revert. Findings come from source
 inspection plus one bundle measurement; native verification is noted per item.
 
-**Status — 2.3.0:** all items below have implementation changes and automated
-regression coverage (147 tests). Native Obsidian checks are still needed for
-KAR-017 (confirm load-time create events and warm startup), KAR-024–KAR-026
-(visual/notice behavior), and KAR-028 (actual Finder/Linux clipboard formats;
-Chromium may already supply some copied files directly).
+**Status — shipped in 2.3.0 (commit `dde3270`, release assets hash-verified):**
+all items below have implementation changes and automated regression coverage
+(147 tests). Native Obsidian checks are still needed for KAR-017 (confirm
+load-time create events and warm startup), KAR-024–KAR-026 (visual/notice
+behavior), and KAR-028 (actual Finder/Linux clipboard formats; Chromium may
+already supply some copied files directly). These checks are also listed under
+outstanding validation work below.
+
+Intentional behavior changes in 2.3.0 that users may notice:
+
+- Search matches note text only, not file paths or ISO dates. Pre-2.3.0 cached
+  search text is replaced by rotating verification within about fifteen minutes,
+  or immediately with **Refresh stream and cache**.
+- A plain click on a stream tag filters the stream; Ctrl/Cmd-click still opens
+  Obsidian's tag search.
+- Raw HTML typed in capture/Edit is no longer sub-highlighted (KAR-016).
 
 - **KAR-016 (P1, measured): Drop unused embedded-language parsers.** `markdown()`
-  pulls lang-html/css/javascript into `main.js` (275 KB → 128 KB without them).
+  pulls lang-html/css/javascript into `main.js` (measured minified `main.js`: 269 KB in 2.2.13 → 132 KB in 2.3.0).
   Use `LanguageSupport(markdownLanguage)`; inline-HTML sub-highlighting is lost.
 - **KAR-017 (P1, inspection; native check pending): Avoid startup cache
   invalidation.** Vault `create` events registered in `onload` fire for every
@@ -29,7 +40,10 @@ Chromium may already supply some copied files directly).
   string copies and redundant `setIcon` calls when typing.
 - **KAR-021 (P3): Skip checklist parsing for rows without checkboxes.**
 - **KAR-022 (P3): Don't let an event's IndexedDB delete race a fresh write**
-  after capture/edit; skip invalidation when the file matches the remembered stat.
+  after capture/edit. Invalidation keeps the IndexedDB record while the file
+  still exists (it is replaced on re-read) and drops only still-unread records
+  when the plugin closes. A same-stat shortcut was tried and rejected because it
+  swallowed genuine same-stat external edits.
 - **KAR-023 (P3): Scope folder-hiding reapplication** to explorer changes rather
   than tearing down observers on every layout change.
 - **KAR-024 (usability): Filter by prefix or tag** by clicking it in the stream.
@@ -42,11 +56,16 @@ Chromium may already supply some copied files directly).
 - **KAR-029 (usability): Search feedback.** Highlight matched terms; stop ISO
   timestamps and paths from matching nearly every entry for year-like terms.
 
-## Outstanding validation work — 2026-10-31, 2.2.5
+## Outstanding validation work — updated 2026-11-02, 2.3.0
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.
 Current work is validation/profiling and documented API limitations:
 
+- 2.3.0 native checks: warm startup on a large vault without re-reading every
+  entry (KAR-017); prefix/tag filter, Done, Undo notices, and search highlight
+  appearance in light/dark themes (KAR-024–KAR-026, KAR-029); real Finder and
+  Linux file-manager file paste (KAR-028). Revert to `known-good-2.2.13` if a
+  2.3.x release misbehaves natively.
 - Physical iPhone/iPad/Android keyboards, clipboard, background/resume, cache
   eviction, attachment behavior, scrolling latency, and peak memory.
 - Minimum/current Obsidian, macOS/Linux, and native pop-out integration.

@@ -4,11 +4,14 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-02, 2.3.0
+## Current snapshot — 2026-11-02, 2.3.1
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 The tag `known-good-2.2.13` marks the last release before the 2.3.0
 performance/usability pass; revert to it if 2.3.0 misbehaves natively.
+
+2.3.1 is documentation-only relative to 2.3.0 (backlog, AGENTS.md, handoff and
+development instructions).
 
 2.3.0 works through KAR-016–KAR-029 (see `docs/backlog.md`): `main.js` drops
 from 269 KB to 132 KB by not bundling embedded HTML/CSS/JS parsers; vault events
@@ -71,6 +74,14 @@ physical keyboard autocorrection remains to be verified on mobile.
 - Device-local IndexedDB, bounded stream/body/search caches, batched indexing,
   prewarmed/shared wikilink suggestions, and background same-stat verification.
   Draft ownership and settings mutations are serialized. Markdown is authoritative.
+- Vault create/modify/delete/rename handlers register in `onLayoutReady`, so the
+  load-time create burst does not invalidate warm index records. Verification
+  reads a rotating slice each minute, skips unchanged writes, and does not push
+  uncached files through the LRU caches.
+- Search matches note body text only and highlights matches. A plain click on a
+  colored prefix or tag filters the stream; Ctrl/Cmd-click on a tag passes
+  through to Obsidian. `todo:` rows show Done. Rescue and Delete show Undo;
+  undoing a delete recreates the exact source and never overwrites a file.
 
 ## Validation and outstanding work
 
@@ -81,7 +92,8 @@ was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from
 the computer-use tool; do not call that release physically validated.
 
-Open work: physical iPhone/iPad/Android input, clipboard, lifecycle and memory;
+Open work: native checks for 2.3.0 (warm startup, filters/Done/Undo/highlight
+visuals, Finder/Linux file paste); physical iPhone/iPad/Android input, clipboard, lifecycle and memory;
 minimum/current Obsidian and macOS/Linux; native pop-outs; OneDrive conflicts
 and trash recovery; image-heavy memory; autocomplete filtering/painting; variable
 cold indexing. URL fetching still lacks host-level abort/download bounds.
@@ -97,7 +109,8 @@ Use `docs/compatibility.md` for measured results and limits.
   an actual vault. Copy as `KARPATHY_VAULT_GUIDE.md` and explicitly ask it to read
   the guide; this does not replace the repository's contributor `AGENTS.md`.
 - Default delivery: test/build, commit, push main, publish three BRAT assets,
-  verify hashes. Review/planning/local-only user instructions override this.
+  verify hashes. Before a broad or risky pass, push an annotated
+  `known-good-VERSION` tag on the last good release commit. Review/planning/local-only user instructions override this.
 - Use the new machine's authenticated GitHub CLI. Never commit credentials,
   vault notes/settings, generated bundles, caches, or `.release-work/` artifacts.
   Historical benchmark harnesses are untracked, not fresh-clone prerequisites.

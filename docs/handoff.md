@@ -11,7 +11,16 @@ The tag `known-good-2.2.13` marks the last release before the 2.3.0
 performance/usability pass; revert to it if 2.3.0 misbehaves natively.
 
 2.3.1 is documentation-only relative to 2.3.0 (backlog, AGENTS.md, handoff and
-development instructions).
+development instructions). Later `main` commits that only change documentation
+are intentionally unreleased; the next code release is 2.3.2.
+
+**Recommended next step:** on a machine with Obsidian desktop, generate a fresh
+test vault and run smoke checks 1–12 in `docs/development.md`, prioritizing 9–12
+(filters, Done, Undo, highlights, warm startup, macOS/Linux file paste). 2.3.0
+changed startup event timing (KAR-017), so confirm entries edited while
+Obsidian was closed still appear updated after launch. Record results in
+`docs/compatibility.md`; if startup or Undo misbehaves, revert to
+`known-good-2.2.13` and log the failure as a KAR item.
 
 2.3.0 works through KAR-016–KAR-029 (see `docs/backlog.md`): `main.js` drops
 from 269 KB to 132 KB by not bundling embedded HTML/CSS/JS parsers; vault events

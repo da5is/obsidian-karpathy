@@ -226,6 +226,33 @@ test("warm records survive files reported after startup and stale records are pr
   await index.close();
 });
 
+test("files edited while closed and reported late are re-read instead of using warm records", async () => {
+  const app = new App(), early = new Date(2026, 9, 29), late = new Date(2026, 9, 30);
+  await app.vault.create(entryPath("Karpathy", early, "edited"), serializeEntry("edited", early.toISOString(), "before"));
+  await app.vault.create(entryPath("Karpathy", late, "other"), serializeEntry("other", late.toISOString(), "other"));
+  const first = new Store(app as any, "Karpathy");
+  assert.equal(await first.countEntries(), 2);
+  await first.close();
+  // Rescued on another device while closed: new timestamp, new size and mtime.
+  const path = entryPath("Karpathy", early, "edited");
+  const rescued = new Date(2026, 10, 1).toISOString();
+  const text = serializeEntry("edited", rescued, "after offline edit", early.toISOString(), 1);
+  app.vault.texts.set(path, text);
+  const file = app.vault.files.get(path)!;
+  file.stat = { ...file.stat, mtime: file.stat.mtime + 1000, size: text.length };
+  const loaded = [...app.vault.files].filter(([name]) => name.endsWith(".md"));
+  for (const [name] of loaded) app.vault.files.delete(name);
+  const store = new Store(app as any, "Karpathy");
+  await store["initial"];
+  for (const [name, value] of loaded) app.vault.files.set(name, value);
+  store.reindex();
+  await store.prune();
+  const page = await store.page({ file: 0, offset: 0 }, 1, "");
+  assert.deepEqual(page.entries.map(entry => entry.body), ["after offline edit", "other"]);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "before")).entries.length, 0);
+  await store.close();
+});
+
 test("events keep the persisted record until re-read; closing drops unread changes", async context => {
   const app = new App(), date = new Date(2026, 9, 30);
   const store = new Store(app as any, "Karpathy");

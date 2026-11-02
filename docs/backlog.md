@@ -63,6 +63,26 @@ Intentional behavior changes in 2.3.0 that users may notice:
   until the next capture. The layout-ready reindex now refreshes open views.
   Regression test opens a view before layout readiness. Native check pending.
 
+**Regression audit after KAR-030 (2026-11-02, 2.3.2):** reviewed every 2.3.0
+change for state that previously depended on load-time vault events or full
+re-renders. No further defects found:
+
+- Wikilink suggestions: the layout-ready `prepare()` + `reconcile()` enumerates
+  all vault files, so an index built before the vault loaded is completed.
+- Offline edits: late-reported files whose stat changed are re-read rather than
+  adopting warm records (new regression test in `index.test.ts`). Events missed
+  between plugin load and layout readiness are covered by the layout-ready
+  reindex (creates, deletes and renames change the file set; edits change stat).
+- Row reuse: signatures still include path, timestamp, created, rescues and
+  conflict plus full source, so actions never act on stale entry content.
+- Lazy drafts read the editor at flush; CodeMirror state stays readable after
+  destroy, and save/discard still write `null` immediately.
+- Editor prefix coloring decorates only the first line, so skipping
+  viewport-only rebuilds is safe; settings updates always pass a new colors
+  object through `updateColors`.
+- Native clipboard paths are read only when the paste event has no files, so
+  Chromium-supplied files are not attached twice.
+
 ## Outstanding validation work — updated 2026-11-02, 2.3.0
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.

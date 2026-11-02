@@ -44,8 +44,9 @@ keep historical measurements clearly labeled. Include screenshots for visible
 changes where useful.
 
 Default: commit, push `main`, and publish a BRAT-compatible release without another
-confirmation. Review/planning/local-only user requests override this. Increment all
-version metadata and verify published asset hashes against the tested build;
+confirmation. Review/planning/local-only user requests override this. Documentation-only
+changes (no change to `main.js` or `styles.css`) are committed and pushed without a
+release or version bump. For releases, increment all version metadata and verify published asset hashes against the tested build;
 download assets into a new empty directory rather than deleting files to clean up.
 Before a broad or risky pass, push an annotated `known-good-VERSION` tag on the last
 good release (currently `known-good-2.2.13`). Record new findings as KAR items in

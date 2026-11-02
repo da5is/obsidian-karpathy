@@ -109,7 +109,8 @@ Use `docs/compatibility.md` for measured results and limits.
   an actual vault. Copy as `KARPATHY_VAULT_GUIDE.md` and explicitly ask it to read
   the guide; this does not replace the repository's contributor `AGENTS.md`.
 - Default delivery: test/build, commit, push main, publish three BRAT assets,
-  verify hashes. Before a broad or risky pass, push an annotated
+  verify hashes. Documentation-only changes are committed and pushed without a
+  release or version bump. Before a broad or risky pass, push an annotated
   `known-good-VERSION` tag on the last good release commit. Review/planning/local-only user instructions override this.
 - Use the new machine's authenticated GitHub CLI. Never commit credentials,
   vault notes/settings, generated bundles, caches, or `.release-work/` artifacts.

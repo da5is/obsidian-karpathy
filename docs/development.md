@@ -96,7 +96,8 @@ Historical timings and their limits are in `compatibility.md`. The original
 untracked and are **not** prerequisites or reproducible from a fresh clone.
 Recreate a benchmark explicitly before claiming comparable new measurements.
 
-Follow `AGENTS.md`'s standing commit/push/release instruction. Authenticate `gh`
+Follow `AGENTS.md`'s standing commit/push/release instruction (skip the release
+for documentation-only changes). Authenticate `gh`
 on the new machine; do not copy credentials. Increment `package.json`, both root
 version fields in `package-lock.json`, `manifest.json`, and `versions.json`.
 Run tests/build, commit, push main, then publish against that exact commit:
@@ -114,4 +115,6 @@ Before a broad or risky change, mark the last good release commit so it is easy
 to return to, e.g. `git tag -a known-good-2.2.13 COMMIT -m "..."` and
 `git push origin known-good-2.2.13`. To revert, deploy the three assets from
 that tag's release (or check out the tag and build) into the test vault.
-Documentation-only releases still increment all version metadata.
+Documentation-only changes (nothing that alters `main.js` or `styles.css`) are
+committed and pushed without a release or version bump; earlier docs-only
+releases (2.2.5, 2.3.1) predate this rule.

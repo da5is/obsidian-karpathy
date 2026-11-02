@@ -128,6 +128,22 @@ export function replaceEntry(text: string, expected: Entry, body: string, rescue
     (current.rescues ?? 0) + (rescuedAt ? 1 : 0), frontmatter(text)!.properties);
 }
 
+// Undo a rescue: return metadata to its earlier values if nothing else changed.
+export function unrescueEntry(text: string, previous: Entry): string {
+  const current = parseEntries(text, previous.path)[0];
+  if (!current || current.id !== previous.id || current.body !== previous.body || current.rescues !== (previous.rescues ?? 0) + 1) {
+    throw new Error("This entry changed after it was rescued, so the rescue cannot be undone.");
+  }
+  return serializeEntry(current.id, previous.timestamp, current.body, current.created, previous.rescues ?? 0, frontmatter(text)!.properties);
+}
+
+// The same todo-to-done change as the capture button: rename the leading prefix
+// and append a local completion date.
+export function markDone(body: string, now = new Date()): string {
+  if (entryPrefix(body)?.[1].toLowerCase() !== "todo") throw new Error("Only entries starting with todo: can be marked done.");
+  return `done:${body.slice(5)}\n\nCompleted: ${localDay(now)}`;
+}
+
 export function matchesQuery(entry: Entry, query: string): boolean {
   const haystack = `${entry.body}\n${entry.timestamp}\n${entry.path}`.toLocaleLowerCase();
   return query.toLocaleLowerCase().trim().split(/\s+/).every(term => haystack.includes(term));
@@ -171,6 +187,7 @@ export class LruCache<K, V> {
       this.delete(key);
     }
   }
+  has(key: K): boolean { return this.items.has(key); }
   delete(key: K): void {
     const item = this.items.get(key);
     if (item) this.bytes -= item.size;

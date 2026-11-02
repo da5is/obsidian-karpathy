@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachmentFolder, baseFolder, entryPath, isEntryPath, LruCache, matchesQuery, parseEntries, replaceEntry, serializeEntry, toggleTask, uniqueId } from "../src/model";
+import { attachmentFolder, baseFolder, entryPath, isEntryPath, LruCache, markDone, matchesQuery, parseEntries, replaceEntry, serializeEntry, toggleTask, uniqueId } from "../src/model";
 
 const timestamp = "2026-10-25T12:00:00.000Z";
 const path = "Karpathy/2026/2026-10/2026-10-25-test-1.md";
@@ -91,4 +91,11 @@ test("LRU bounds memory and promotes cache hits", () => {
   assert.equal(cache.get("c"), undefined);
   cache.clear();
   assert.equal(cache.size, 0);
+});
+
+test("marking a todo done renames the leading prefix and appends a local completion date", () => {
+  const now = new Date(2026, 10, 2, 23, 30);
+  assert.equal(markDone("TODO: buy milk\n- oat", now), "done: buy milk\n- oat\n\nCompleted: 2026-11-02");
+  assert.throws(() => markDone("done: finished", now), /todo:/);
+  assert.throws(() => markDone("note with todo: inside", now), /todo:/);
 });

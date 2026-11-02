@@ -13,12 +13,13 @@ export default class KarpathyPlugin extends Plugin {
   store!: Store;
   readonly links = new WikilinkIndex(this.app);
   private folderObservers: MutationObserver[] = [];
+  private observedExplorers: HTMLElement[] = [];
   private refreshTimer?: number;
   editing = 0;
   private settingsWrites: Promise<void> = Promise.resolve();
   private pendingSettings?: Settings;
   private draftOwners = new Map<string, { owner: object; focus: () => void }>();
-  private pendingDrafts = new Map<string, Draft | null>();
+  private pendingDrafts = new Map<string, Draft | null | (() => Draft | null)>();
   private draftTimer?: ReturnType<typeof setTimeout>;
 
   claimDraft(key: string, owner: object, focus: () => void): boolean {
@@ -95,7 +96,12 @@ export default class KarpathyPlugin extends Plugin {
     this.addCommand({ id: "toggle-sidebars", name: "Toggle hidden sidebars", callback: () => {
       void this.setSidebarsHidden(!this.settings.hideSidebars).catch(error => this.report(error));
     } });
-    this.registerEvent(this.app.workspace.on("layout-change", () => { this.applySidebarHiding(); this.applyFolderHiding(); }));
+    this.registerEvent(this.app.workspace.on("layout-change", () => {
+      this.applySidebarHiding();
+      // Rebuild observers only when the set of file explorers changes.
+      const explorers = this.app.workspace.getLeavesOfType("file-explorer").map(leaf => leaf.view.containerEl);
+      if (explorers.length !== this.observedExplorers.length || explorers.some((root, i) => root !== this.observedExplorers[i])) this.applyFolderHiding();
+    }));
     this.register(() => this.clearSidebarHiding());
     this.addRibbonIcon("notebook-pen", "Open Karpathy", () => { void this.open().catch(error => this.report(error)); });
     this.addCommand({ id: "open-stream", name: "Open stream", callback: () => { void this.open().catch(error => this.report(error)); } });
@@ -114,7 +120,6 @@ export default class KarpathyPlugin extends Plugin {
       void this.links.prepare().catch(error => this.report(error));
       this.changed();
     } });
-    this.registerEvent(this.app.vault.on("create", file => this.fileChanged(file)));
     this.registerEvent(this.app.metadataCache.on("changed", file => this.links.changed(file)));
     let linksResolved = false;
     this.registerEvent(this.app.metadataCache.on("resolved", () => {
@@ -122,13 +127,18 @@ export default class KarpathyPlugin extends Plugin {
       linksResolved = true;
       void this.links.reconcile().catch(error => this.report(error));
     }));
-    this.registerEvent(this.app.vault.on("modify", file => this.fileChanged(file)));
-    this.registerEvent(this.app.vault.on("delete", file => this.fileChanged(file)));
-    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      this.store.invalidate(oldPath);
-      this.fileChanged(file, oldPath);
-    }));
     this.app.workspace.onLayoutReady(() => {
+      // Vault create events fire for every existing file while the vault loads.
+      // Registering afterwards keeps warm cache records instead of invalidating them.
+      this.registerEvent(this.app.vault.on("create", file => this.fileChanged(file)));
+      this.registerEvent(this.app.vault.on("modify", file => this.fileChanged(file)));
+      this.registerEvent(this.app.vault.on("delete", file => this.fileChanged(file)));
+      this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+        this.store.invalidate(oldPath);
+        this.fileChanged(file, oldPath);
+      }));
+      this.store.reindex();
+      void this.store.prune().catch(error => console.warn("[karpathy] Could not prune the local index", error));
       void this.links.prepare().then(() => this.links.reconcile()).catch(error => this.report(error));
       this.applySidebarHiding();
       this.applyFolderHiding();
@@ -233,7 +243,8 @@ export default class KarpathyPlugin extends Plugin {
     return entry ? `karpathy:edit:${entry.path}:${entry.id}` : `karpathy:capture:${this.settings.baseFolder}`;
   }
   readDraft(key: string): Draft | null {
-    const value: unknown = this.pendingDrafts.has(key) ? this.pendingDrafts.get(key) : this.app.loadLocalStorage(key);
+    const pending = this.pendingDrafts.get(key);
+    const value: unknown = this.pendingDrafts.has(key) ? (typeof pending === "function" ? pending() : pending) : this.app.loadLocalStorage(key);
     if (!value || typeof value !== "object") return null;
     const draft = value as Partial<Draft>;
     if (typeof draft.body !== "string" || typeof draft.id !== "string" || !/^[a-zA-Z0-9-]+$/.test(draft.id) ||
@@ -245,15 +256,17 @@ export default class KarpathyPlugin extends Plugin {
     if (cleaned !== draft.body) new Notice("An attachment upload was interrupted. Your text draft was restored; reattach the missing files.");
     return { body: cleaned, id: draft.id, timestamp: draft.timestamp, original: draft.original };
   }
-  writeDraft(key: string, draft: Draft | null): void {
-    this.pendingDrafts.set(key, draft ? { ...draft } : null);
+  // A function is evaluated when the coalesced write flushes, so typing does not
+  // copy the whole draft on every keystroke.
+  writeDraft(key: string, draft: Draft | null | (() => Draft | null)): void {
+    this.pendingDrafts.set(key, typeof draft === "function" || !draft ? draft : { ...draft });
     if (!draft) { this.flushDrafts(); return; }
     if (!this.draftTimer) this.draftTimer = setTimeout(() => this.flushDrafts(), 250);
   }
   flushDrafts(): void {
     clearTimeout(this.draftTimer); this.draftTimer = undefined;
     for (const [key, draft] of this.pendingDrafts) {
-      try { this.app.saveLocalStorage(key, draft); this.pendingDrafts.delete(key); }
+      try { this.app.saveLocalStorage(key, typeof draft === "function" ? draft() : draft); this.pendingDrafts.delete(key); }
       catch (error) { this.report(new Error("Could not preserve the draft on this device: " + String(error))); }
     }
   }
@@ -298,9 +311,10 @@ export default class KarpathyPlugin extends Plugin {
     this.folderObservers.forEach(observer => observer.disconnect());
     this.folderObservers = [];
     this.unhide();
+    const explorers = this.app.workspace.getLeavesOfType("file-explorer").map(leaf => leaf.view.containerEl);
+    this.observedExplorers = explorers;
     if (!this.settings.hiddenFolders.length) return;
-    for (const leaf of this.app.workspace.getLeavesOfType("file-explorer")) {
-      const root = leaf.view.containerEl;
+    for (const root of explorers) {
       const mark = () => root.querySelectorAll<HTMLElement>(".nav-folder-title[data-path]").forEach(title => {
         const path = title.getAttribute("data-path") ?? "";
         title.parentElement?.classList.toggle("karpathy-hidden-folder", this.settings.hiddenFolders.some(folder => path === folder || path.startsWith(folder + "/")));

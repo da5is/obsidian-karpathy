@@ -157,3 +157,93 @@ test("cold indexing persists batches rather than a transaction per file", async 
   assert.equal(app.vault.reads, reads);
   await warm.close();
 });
+
+test("verification rereads without rewriting unchanged records or evicting hot cache entries", async context => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (let i = 0; i < 20; i++) await app.vault.create(entryPath("Karpathy", date, `v-${i}`), serializeEntry(`v-${i}`, date.toISOString(), `body ${i}`));
+  const store = new Store(app as any, "Karpathy");
+  assert.equal(await store.countEntries(), 20);
+  const hot = store.files[0];
+  store["cache"].clear(); store["searchCache"].clear();
+  await store.entries(hot);
+  let written = 0;
+  context.mock.method(LocalIndex.prototype, "putMany", async (values: unknown[]) => { written += values.length; });
+  let reconciled = 0;
+  store.onReconciled = () => { reconciled++; };
+  const reads = app.vault.reads;
+  await store.reconcile();
+  assert.equal(app.vault.reads - reads, 20);
+  assert.equal(written, 0);
+  assert.equal(reconciled, 0);
+  assert.equal(store["cache"].size, 1);
+  assert.ok(store["cache"].has(hot.path));
+  const changed = store.files[5];
+  const id = (await store.entries(changed))[0].id;
+  app.vault.texts.set(changed.path, serializeEntry(id, date.toISOString(), "same stat edit"));
+  await store.reconcile();
+  assert.equal(written, 1);
+  assert.equal(reconciled, 1);
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "same stat edit")).entries.length, 1);
+  await store.close();
+});
+
+test("scheduled verification covers every entry in rotating slices", async () => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (let i = 0; i < 50; i++) await app.vault.create(entryPath("Karpathy", date, `r-${i}`), serializeEntry(`r-${i}`, date.toISOString(), "body"));
+  const store = new Store(app as any, "Karpathy");
+  await store.countEntries();
+  const read = app.vault.read.bind(app.vault);
+  const seen = new Set<string>();
+  let reads = 0;
+  app.vault.read = async file => { seen.add(file.path); reads++; return read(file); };
+  await store.verifySlice();
+  assert.equal(reads, 8);
+  for (let i = 0; i < 6; i++) await store.verifySlice();
+  assert.equal(seen.size, 50);
+  await store.close();
+});
+
+test("warm records survive files reported after startup and stale records are pruned once", async () => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (const id of ["keep-a", "keep-b", "gone"]) await app.vault.create(entryPath("Karpathy", date, id), serializeEntry(id, date.toISOString(), id));
+  const first = new Store(app as any, "Karpathy");
+  assert.equal(await first.countEntries(), 3);
+  await first.close();
+  // The vault has not reported its files yet when the plugin starts.
+  const loaded = [...app.vault.files].filter(([path]) => path.endsWith(".md"));
+  for (const [path] of loaded) app.vault.files.delete(path);
+  const store = new Store(app as any, "Karpathy");
+  await store["initial"];
+  for (const [path, file] of loaded) if (!path.endsWith("-gone.md")) app.vault.files.set(path, file);
+  const reads = app.vault.reads;
+  store.reindex();
+  await store.prune();
+  assert.equal(await store.countEntries(), 2);
+  assert.equal(app.vault.reads, reads);
+  await store.close();
+  const index = new LocalIndex(app as any);
+  assert.deepEqual((await index.records()).map(record => record.id).sort(), ["keep-a", "keep-b"]);
+  await index.close();
+});
+
+test("events keep the persisted record until re-read; closing drops unread changes", async context => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  const store = new Store(app as any, "Karpathy");
+  await store.capture("original", date, "entry");
+  const path = entryPath("Karpathy", date, "entry");
+  const removed: string[] = [];
+  const removeMany = LocalIndex.prototype.removeMany;
+  context.mock.method(LocalIndex.prototype, "removeMany", async function(this: LocalIndex, paths: string[]) {
+    removed.push(...paths); return removeMany.call(this, paths);
+  });
+  store.invalidate(path);
+  assert.deepEqual(removed, []);
+  assert.equal(await store.countEntries(), 1);
+  app.vault.texts.set(path, serializeEntry("entry", date.toISOString(), "edited offline"));
+  store.invalidate(path);
+  await store.close();
+  assert.deepEqual(removed, [path]);
+  const reopened = new Store(app as any, "Karpathy");
+  assert.equal((await reopened.page({ file: 0, offset: 0 }, 1, "edited offline")).entries.length, 1);
+  await reopened.close();
+});

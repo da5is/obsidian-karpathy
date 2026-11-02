@@ -41,10 +41,17 @@ Delete sends that entry file to trash and retains its attachments.
 ## Local index and performance
 
 Each vault has a device-local IndexedDB cache, outside its synced files. Small
-metadata records support ordering and counts; normalized search text is stored
-separately on disk. Startup reuses records whose file size and modification time
-still match. File events invalidate individual records, including same-stat
-changes. An explicit **Refresh stream and cache** rebuilds from Markdown.
+metadata records support ordering and counts; normalized search text (the note
+body only, without paths or timestamps) is stored separately on disk. Each record
+also carries a 32-bit fingerprint of its search text. Startup reuses records whose
+file size and modification time still match. Vault file events are registered
+after the workspace layout is ready, because Obsidian emits a create event for
+every existing file while a vault loads; records for files reported after startup
+are adopted when their stats match, and records for files that never appear are
+pruned in one transaction. File events invalidate individual records, including
+same-stat changes; the persisted record stays until the re-read replaces it, and
+records still awaiting a re-read are removed when the plugin closes. An explicit
+**Refresh stream and cache** rebuilds from Markdown.
 
 There is no shared index file to synchronize. Missing or unavailable IndexedDB
 falls back to reading Markdown. A first build must read the entry files to find
@@ -82,13 +89,20 @@ and backups remain the sync tool's responsibility.
 Drafts are device-local. Cached search text is also stored locally and is removed
 when the corresponding deletion is processed, or when the index is rebuilt.
 
-## Verification and unavailable files (2.0.1)
+## Verification and unavailable files (2.0.1, revised 2.3.0)
 
-Warm cached results remain available immediately. A background content check starts
-after one minute and repeats fifteen minutes after each full check completes.
-It rereads eight files at a time with pauses between batches, detecting changes
-that preserved size and modification time while the plugin was closed. Results
-may be stale until verification finishes; Refresh stream and cache forces a rebuild.
+Warm cached results remain available immediately. Every minute, a background
+check rereads a rotating slice of about one fifteenth of the entries (at least
+eight), so each file is verified roughly every fifteen minutes without a
+full-vault burst. It reads eight files at a time with pauses between batches,
+detecting changes that preserved size and modification time while the plugin
+was closed. Unchanged files are not rewritten to the index, and files not already
+in the memory caches are not added to them. Results may be stale until
+verification reaches a file; Refresh stream and cache forces a rebuild.
+
+Search text from releases before 2.3.0 included paths and timestamps. Those
+records are replaced as entries change or are verified, normally within fifteen
+minutes; Refresh stream and cache replaces them immediately.
 Unreadable files are excluded from results and reported beside the count. They
 are retried on the next one-minute maintenance tick or a relevant file event.
 Maintenance stops when the plugin closes; no entry files are changed by verification.

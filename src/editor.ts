@@ -2,9 +2,9 @@ import { Compartment, EditorSelection, EditorState, Prec } from "@codemirror/sta
 import { Decoration, DecorationSet, EditorView, keymap, placeholder, tooltips, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { acceptCompletion, autocompletion, closeCompletion, CompletionSource, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab, insertNewline } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching, defaultHighlightStyle, HighlightStyle, LanguageSupport, syntaxHighlighting } from "@codemirror/language";
 import { searchKeymap } from "@codemirror/search";
-import { insertNewlineContinueMarkupCommand, markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { insertNewlineContinueMarkupCommand, markdownLanguage } from "@codemirror/lang-markdown";
 import { tags } from "@lezer/highlight";
 import { entryPrefix, uniqueId } from "./model";
 import { livePreview } from "./preview";
@@ -19,7 +19,8 @@ export interface EditorOptions {
   fetchTitles?: () => boolean;
   colors: Record<string, string>;
   tripleEnter: boolean;
-  change: (body: string) => void;
+  // Called after each document change; read `body` lazily to avoid copying large drafts.
+  change: () => void;
   save: () => void;
   upload: (files: File[]) => Promise<string[]>;
   error: (error: unknown) => void;
@@ -38,15 +39,21 @@ export class CaptureEditor {
   private enterCount = 0;
   private handlingEnter = false;
   private hotkeys: KeymapEventHandler[] = [];
+  colorVersion = 0;
 
   constructor(parent: HTMLElement, private options: EditorOptions) {
     const documentMode = new Compartment();
-    const mode = (size: number) => size > 100000 ? [] : [EditorView.lineWrapping, markdown({ base: markdownLanguage, addKeymap: false })];
+    const editor = this;
+    // Plain Markdown support: markdown() would also bundle HTML/CSS/JS parsers
+    // for embedded code, roughly doubling main.js for highlighting we don't need.
+    const language = new LanguageSupport(markdownLanguage);
+    const mode = (size: number) => size > 100000 ? [] : [EditorView.lineWrapping, language];
     const prefix = ViewPlugin.fromClass(class {
       decorations: DecorationSet;
       constructor(view: EditorView) { this.decorations = this.build(view); }
+      private colors = editor.colorVersion;
       update(update: ViewUpdate): void {
-        this.decorations = this.build(update.view);
+        if (update.docChanged || this.colors !== editor.colorVersion) { this.colors = editor.colorVersion; this.decorations = this.build(update.view); }
       }
       build(view: EditorView): DecorationSet {
         const line = view.state.doc.line(1);
@@ -101,7 +108,7 @@ export class CaptureEditor {
           EditorView.contentAttributes.of({ "aria-label": "Entry Markdown editor", spellcheck: "true", autocorrect: "on", autocapitalize: "sentences" }),
           EditorView.updateListener.of(update => {
             if (!this.handlingEnter && (update.docChanged || update.selectionSet)) this.enterCount = 0;
-            if (update.docChanged) options.change(update.state.doc.toString());
+            if (update.docChanged) options.change();
           }),
           // CodeMirror replays iOS Return after native input. Saving in
           // beforeinput races that replay and inserts a newline into the next draft.
@@ -235,9 +242,19 @@ export class CaptureEditor {
   }
 
   get body(): string { return this.view.state.doc.toString(); }
+  // Cheap checks for per-keystroke UI state: no full-document copy.
+  get isBlank(): boolean {
+    for (const chunk of this.view.state.doc.iter()) if (/\S/.test(chunk)) return false;
+    return true;
+  }
+  get prefix(): string | undefined {
+    const line = this.view.state.doc.line(1);
+    return entryPrefix(this.view.state.sliceDoc(0, Math.min(line.to, 1000)))?.[1].toLowerCase();
+  }
   focus(): void { if (!this.destroyed) this.view.focus(); }
   updateColors(colors: Record<string, string>): void {
     this.options.colors = colors;
+    this.colorVersion++;
     if (!this.destroyed) this.view.dispatch({});
   }
   lock(value: boolean): void {
@@ -258,12 +275,12 @@ export class CaptureEditor {
   }
   toggleTodo(now = new Date()): void {
     if (this.destroyed || this.view.state.readOnly) return;
-    const prefix = entryPrefix(this.body)?.[1].toLowerCase();
+    const prefix = this.prefix;
     if (prefix === "done") return;
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const changes = this.view.state.changes(prefix === "todo" ? [
       { from: 0, to: 5, insert: "done:" },
-      { from: this.body.length, insert: `\n\nCompleted: ${date}` }
+      { from: this.view.state.doc.length, insert: `\n\nCompleted: ${date}` }
     ] : { from: 0, insert: "todo: " });
     this.view.dispatch({
       changes,

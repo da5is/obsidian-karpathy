@@ -7,6 +7,7 @@ export interface IndexRecord {
   size: number;
   id: string;
   timestamp: string;
+  hash?: number;
 }
 
 // IndexedDB is device-local, outside the synced vault. Losing it only costs a
@@ -124,8 +125,10 @@ export class LocalIndex {
       });
     } catch (error) { this.fail(error); }
   }
-  async remove(path: string): Promise<void> {
-    await this.write((meta, search) => { meta.delete(path); search.delete(path); });
+  async remove(path: string): Promise<void> { await this.removeMany([path]); }
+  async removeMany(paths: string[]): Promise<void> {
+    if (!paths.length) return;
+    await this.write((meta, search) => { for (const path of paths) { meta.delete(path); search.delete(path); } });
   }
   async clear(): Promise<void> {
     await this.write((meta, search) => { meta.clear(); search.clear(); });

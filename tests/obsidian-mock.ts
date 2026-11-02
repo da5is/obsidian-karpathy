@@ -222,8 +222,11 @@ export class Menu {
 }
 export class Setting {}
 export class Notice {
-  static messages: string[] = [];
-  constructor(message: string) { Notice.messages.push(message); }
+  static messages: (string | DocumentFragment)[] = [];
+  static last?: Notice;
+  hidden = false;
+  constructor(public message: string | DocumentFragment, public duration?: number) { Notice.messages.push(message); Notice.last = this; }
+  hide() { this.hidden = true; }
 }
 export class MarkdownRenderer {
   static async render(_app: App, body: string, element: HTMLElement) {

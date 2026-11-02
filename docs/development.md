@@ -14,7 +14,8 @@ npm run build
 ```
 
 A clean source export was verified with a fresh dependency install, all 120 tests,
-the build, and fixture generation on Windows/Node 24 for 2.2.2. macOS/Linux
+the build, and fixture generation on Windows/Node 24 for 2.2.2. The 2.3.0 suite
+(147 tests) and build were run on Linux with Node 26. macOS/Linux
 portability has been reviewed but not executed on those operating systems.
 
 No Obsidian installation, personal vault, credentials, or previous chat is needed

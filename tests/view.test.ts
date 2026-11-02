@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
-import { App, closeDOM, MarkdownRenderer, Menu, Platform } from "./obsidian-mock";
+import { App, closeDOM, MarkdownRenderer, Menu, Notice, Platform } from "./obsidian-mock";
 import { shell } from "./electron-mock";
 import KarpathyPlugin from "../src/main";
 import { Store } from "../src/store";
 import { KarpathyView } from "../src/view";
 import { CaptureEditor, editorToolbar } from "../src/editor";
+import { entryPath } from "../src/model";
 import { DEFAULT_SETTINGS, parseSettings, themePrefixColor, themeTagColor } from "../src/settings";
 
 after(closeDOM);
@@ -154,7 +155,12 @@ test("stream moves clickable tags below metadata without changing saved Markdown
     assert.equal(row.textContent, "tags: #ai, #work/project, #photo, #last");
     assert.equal(row.querySelector<HTMLAnchorElement>("a")!.style.getPropertyValue("--karpathy-tag-color"), themeTagColor("#ai"));
     assert.deepEqual([...row.querySelectorAll("a")].map(tag => tag.textContent), ["#ai", "#work/project", "#photo", "#last"]);
+    // A plain click filters the stream; Ctrl/Cmd-click keeps Obsidian's own tag handling.
     row.querySelector<HTMLAnchorElement>("a")!.click();
+    assert.equal(clicks, 0);
+    assert.equal(view["query"], "#ai");
+    assert.equal(view["search"].value, "#ai");
+    row.querySelector<HTMLAnchorElement>("a")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }));
     assert.equal(clicks, 1);
     const content = view.contentEl.querySelector(".karpathy-entry-content")!;
     assert.equal(content.querySelectorAll("p").length, 2);
@@ -924,4 +930,94 @@ test("links from a different DOM realm remain clickable after window migration",
   link.dispatchEvent(new foreign.window.MouseEvent("click", { bubbles: true, cancelable: true }));
   assert.equal(opened, "Target.md");
   await view.onClose(); await plugin.store.close(); foreign.window.close();
+});
+
+test("prefix click filters the stream, todo rows mark done, and search highlights matches", async () => {
+  const { app, plugin, view } = fixture();
+  await plugin.store.capture("todo: call Alice", new Date(2026, 10, 1, 9), "task");
+  await plugin.store.capture("ordinary note about Alice", new Date(2026, 10, 1, 10), "note");
+  plugin.changed = () => { plugin.store.reindex(); void view.refresh(true); };
+  await view.onOpen();
+  try {
+    assert.equal(view.contentEl.querySelector('[data-entry-id="note"] [aria-label="Mark entry done"]'), null);
+    view.contentEl.querySelector<HTMLElement>('[data-entry-id="task"] .karpathy-prefix')!.click();
+    await until(() => view["items"].length === 1 && !view["loading"]);
+    assert.equal(view["search"].value, "todo:");
+    assert.equal(view["searchBar"].hidden, false);
+    assert.equal(view.contentEl.querySelector('[data-entry-id="task"] mark.karpathy-match')?.textContent, "todo:");
+    view.filterBy("alice");
+    await until(() => view["items"].length === 2 && !view["loading"]);
+    assert.equal(view.contentEl.querySelectorAll("mark.karpathy-match").length, 2);
+    assert.equal(view.contentEl.querySelector("mark.karpathy-match")!.textContent, "Alice");
+    view.contentEl.querySelector<HTMLButtonElement>('[data-entry-id="task"] [aria-label="Mark entry done"]')!.click();
+    const path = entryPath("Karpathy", new Date(2026, 10, 1, 9), "task");
+    await until(() => /^done: call Alice\n\nCompleted: \d{4}-\d{2}-\d{2}$/.test(app.vault.texts.get(path)!.split("---\n\n")[1].trim()));
+    assert.ok(plugin.settings.prefixColors.done);
+    await until(() => !view.contentEl.querySelector('[data-entry-id="task"] [aria-label="Mark entry done"]'));
+  } finally { await view.onClose(); await plugin.store.close(); }
+});
+
+test("rescue and deletion offer an Undo notice that restores the original note", async () => {
+  const { app, plugin, view } = fixture();
+  await plugin.store.capture("old idea", new Date(2025, 0, 1), "old-entry");
+  await plugin.store.capture("recent idea", new Date(2026, 0, 1), "new-entry");
+  const path = entryPath("Karpathy", new Date(2025, 0, 1), "old-entry");
+  const original = app.vault.texts.get(path);
+  await view.onOpen();
+  try {
+    view.contentEl.querySelector<HTMLButtonElement>('[data-entry-id="old-entry"] [aria-label="Rescue entry to the top"]')!.click();
+    await until(() => view.contentEl.querySelector<HTMLElement>(".karpathy-entry")?.dataset.entryId === "old-entry" && typeof Notice.last?.message === "object");
+    let notice = Notice.last!;
+    (notice.message as DocumentFragment).querySelector<HTMLButtonElement>(".karpathy-undo")!.click();
+    assert.equal(notice.hidden, true);
+    await until(() => app.vault.texts.get(path) === original);
+    await view.refresh(false);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-entry-id="old-entry"] [aria-label="More entry actions"]')!.click();
+    Menu.shown.items.find(item => item.title === "Delete entry")!.click();
+    document.querySelector<HTMLButtonElement>(".karpathy-delete-modal .mod-warning")!.click();
+    await until(() => !app.vault.texts.has(path) && Notice.last !== notice);
+    notice = Notice.last!;
+    (notice.message as DocumentFragment).querySelector<HTMLButtonElement>(".karpathy-undo")!.click();
+    await until(() => app.vault.texts.get(path) === original);
+    assert.equal(await plugin.store.countEntries(), 2);
+  } finally { await view.onClose(); await plugin.store.close(); }
+});
+
+test("color changes update prefixes in place and refresh keeps the previous count visible", async context => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("idea: colored", new Date(2026, 10, 1, 9), "idea");
+  await plugin.store.capture("plain note", new Date(2026, 10, 1, 10), "plain");
+  const render = MarkdownRenderer.render;
+  let renders = 0;
+  context.mock.method(MarkdownRenderer, "render", async (...args: Parameters<typeof render>) => { renders++; return render(...args); });
+  await view.onOpen();
+  try {
+    await until(() => view["subtitle"].textContent === "2 notes captured");
+    assert.equal(renders, 2);
+    await plugin.updateSettings(next => { next.prefixColors.idea = "#ff0000"; });
+    const refreshing = view.refresh(true);
+    assert.equal(view["subtitle"].textContent, "2 notes captured");
+    await refreshing;
+    assert.equal(renders, 2);
+    assert.equal(view.contentEl.querySelector<HTMLElement>('[data-entry-id="idea"] .karpathy-prefix')!.style.color, "rgb(255, 0, 0)");
+  } finally { await view.onClose(); await plugin.store.close(); }
+});
+
+test("vault file events are registered only after the workspace layout is ready", async () => {
+  const app = new App();
+  const registered: string[] = [];
+  let ready: (() => void) | undefined;
+  (app.vault as any).on = (name: string) => { registered.push(name); return {}; };
+  (app.metadataCache as any).on = () => ({});
+  (app.workspace as any).on = () => ({});
+  app.workspace.onLayoutReady = callback => { ready = callback; };
+  const plugin = new KarpathyPlugin(app as any, { id: "karpathy" });
+  for (const method of ["registerDomEvent", "registerEvent", "addCommand", "registerView", "addSettingTab", "addRibbonIcon"])
+    (plugin as any)[method] = () => ({});
+  await plugin.onload();
+  try {
+    assert.deepEqual(registered, []);
+    ready!();
+    assert.deepEqual(registered.sort(), ["create", "delete", "modify", "rename"]);
+  } finally { await plugin.store.close(); await plugin.links.close(); }
 });

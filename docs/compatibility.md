@@ -1,6 +1,19 @@
 # Compatibility and performance checks
 
-Release: 2.2.13. All timing values below are milliseconds.
+Release: 2.3.0. All timing values below are milliseconds.
+
+2.3.0 (KAR-016–KAR-029) was tested on Linux/Node 26: 147 automated tests,
+TypeScript, and the production build pass. Measured: minified `main.js` is 132 KB,
+down from 269 KB in 2.2.13, by omitting lang-markdown's embedded HTML/CSS/JS
+parsers (inline HTML inside the editor is no longer sub-highlighted). New
+coverage: layout-ready event registration, late-reported warm records and pruning,
+verification without unchanged writes or cache eviction, rotating verification
+slices, retained records until re-read, close-time removal of unread changes,
+body-only search, rescue/delete undo, in-place recoloring, prefix/tag filters,
+Done, highlights, and Windows/macOS/Linux clipboard file formats. Not verified:
+native Obsidian behavior of these changes (including whether create events fire
+during vault load in current Obsidian), real Finder/Linux file-manager clipboard
+contents, and mobile devices.
 
 2.2.6 adds regression coverage for moving clickable tags while preserving source
 Markdown, images, code, and embedded-note tags. Native visual verification of
@@ -137,6 +150,8 @@ preview scans the viewport rather than the entire document.
 - Attachments are limited to 50 MiB per file before contents are read. Add larger
   files directly to the vault and link them. Native file paste reads and uploads
   one file at a time. Earlier successful links survive a later upload failure.
+  Native file paste reads Windows `FileNameW`, macOS `NSFilenamesPboardType` or
+  `public.file-url`, and Linux `text/uri-list` (file URLs only).
 - Rendered entry text has an approximate 8 MiB budget plus a 120-row maximum;
   one oversized entry is allowed. Entries over 100,000 characters show a plain
   excerpt and an Open full note button. Decoded images, DOM, and Obsidian caches

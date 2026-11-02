@@ -213,3 +213,34 @@ test("oversized attachments reject before allocating their contents", async () =
   assert.equal(app.vault.getFiles().length, 0);
   await store.close();
 });
+
+test("search matches note text, not entry paths or ISO timestamps", async () => {
+  const { store } = fixture();
+  await store.capture("hello world", date, "search-scope");
+  assert.equal((await store.page({ file: 0, offset: 0 }, 1, "hello")).entries.length, 1);
+  for (const query of ["2026", "karpathy", "10-25", ".md"]) {
+    assert.equal((await store.page({ file: 0, offset: 0 }, 1, query)).entries.length, 0, query);
+  }
+  await store.close();
+});
+test("rescue and deletion can be undone without changing identity, properties or source", async () => {
+  const { app, store } = fixture();
+  const path = entryPath("Karpathy", date, "undo");
+  await app.vault.create(path, serializeEntry("undo", date.toISOString(), "keep me", date.toISOString(), 0, { project: "alpha" }));
+  store.invalidate(path);
+  const entry = await find(store, "undo");
+  await store.rescue(entry, new Date(2027, 0, 1));
+  assert.equal((await find(store, "undo")).rescues, 1);
+  await store.undoRescue(entry);
+  assert.equal(app.vault.texts.get(path), entry.source);
+  assert.equal((await find(store, "undo")).rescues, 0);
+  await assert.rejects(() => store.undoRescue(entry), /cannot be undone/);
+  const current = await find(store, "undo");
+  await store.remove(current);
+  assert.equal(await store.countEntries(), 0);
+  await store.restoreDeleted(current);
+  assert.equal(app.vault.texts.get(path), current.source);
+  assert.equal((await find(store, "undo")).id, "undo");
+  await assert.rejects(() => store.restoreDeleted(current), /already exists/);
+  await store.close();
+});

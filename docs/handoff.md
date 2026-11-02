@@ -4,9 +4,22 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-01, 2.2.13
+## Current snapshot — 2026-11-02, 2.3.0
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
+The tag `known-good-2.2.13` marks the last release before the 2.3.0
+performance/usability pass; revert to it if 2.3.0 misbehaves natively.
+
+2.3.0 works through KAR-016–KAR-029 (see `docs/backlog.md`): `main.js` drops
+from 269 KB to 132 KB by not bundling embedded HTML/CSS/JS parsers; vault events
+register after layout readiness so startup keeps warm index records; background
+verification rotates slices and skips unchanged writes and cache churn; rows
+recolor in place; typing avoids full-document copies; prefix/tag clicks filter
+the stream; todo rows have Done; Rescue and Delete offer Undo; search covers note
+text only and highlights matches; file paste recognizes macOS/Linux clipboard
+formats. 147 automated tests pass on Linux/Node 26. Native Obsidian, macOS/Linux
+paste, and mobile verification of these changes remain pending.
+
 2.2.8 removes hashtag pills and assigns stable automatic colors from the prefix
 theme palette. Tag colors ignore custom prefix overrides and encounter order.
 Images stay centered and tags remain below the written/rescue line. The automated suite has 134 tests.
@@ -61,7 +74,8 @@ physical keyboard autocorrection remains to be verified on mobile.
 
 ## Validation and outstanding work
 
-134 automated tests, TypeScript, and production bundling pass on Windows/Node 24.
+147 automated tests, TypeScript, and production bundling pass on Linux/Node 26
+for 2.3.0 (earlier releases: Windows/Node 24).
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from

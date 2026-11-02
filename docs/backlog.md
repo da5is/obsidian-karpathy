@@ -1,6 +1,48 @@
 # Product backlog
 
-## Current outstanding work — 2026-10-31, 2.2.5
+## Performance and usability review — 2026-11-02, 2.2.13
+
+Baseline tagged `known-good-2.2.13` for easy revert. Findings come from source
+inspection plus one bundle measurement; native verification is noted per item.
+
+**Status — 2.3.0:** all items below have implementation changes and automated
+regression coverage (147 tests). Native Obsidian checks are still needed for
+KAR-017 (confirm load-time create events and warm startup), KAR-024–KAR-026
+(visual/notice behavior), and KAR-028 (actual Finder/Linux clipboard formats;
+Chromium may already supply some copied files directly).
+
+- **KAR-016 (P1, measured): Drop unused embedded-language parsers.** `markdown()`
+  pulls lang-html/css/javascript into `main.js` (275 KB → 128 KB without them).
+  Use `LanguageSupport(markdownLanguage)`; inline-HTML sub-highlighting is lost.
+- **KAR-017 (P1, inspection; native check pending): Avoid startup cache
+  invalidation.** Vault `create` events registered in `onload` fire for every
+  existing file during vault load; each invalidated entry bypasses the warm
+  IndexedDB record and issues a separate delete. Register vault events after
+  layout readiness and reindex there.
+- **KAR-018 (P2): Make background verification cheap.** Full reconciliation
+  rewrote every unchanged record/search text and pushed cold files through the
+  LRU caches, evicting visible rows. Skip unchanged writes, bypass caches for
+  uncached files, and verify a rotating slice each minute.
+- **KAR-019 (P2): Re-render only rows whose own prefix color changed.** Row
+  signatures included the serialized full color map and a second copy of source.
+- **KAR-020 (P2): Reduce per-keystroke work.** Avoid repeated full-document
+  string copies and redundant `setIcon` calls when typing.
+- **KAR-021 (P3): Skip checklist parsing for rows without checkboxes.**
+- **KAR-022 (P3): Don't let an event's IndexedDB delete race a fresh write**
+  after capture/edit; skip invalidation when the file matches the remembered stat.
+- **KAR-023 (P3): Scope folder-hiding reapplication** to explorer changes rather
+  than tearing down observers on every layout change.
+- **KAR-024 (usability): Filter by prefix or tag** by clicking it in the stream.
+- **KAR-025 (usability): Mark a `todo:` entry done from its row.**
+- **KAR-026 (usability): Undo Rescue and Delete** from a short notice.
+- **KAR-027 (usability): Keep the last count while refreshing** instead of
+  flashing "Counting notes…".
+- **KAR-028 (usability): Paste copied files on macOS/Linux,** not only Windows
+  `FileNameW`. Physical macOS/Linux verification pending.
+- **KAR-029 (usability): Search feedback.** Highlight matched terms; stop ISO
+  timestamps and paths from matching nearly every entry for year-like terms.
+
+## Outstanding validation work — 2026-10-31, 2.2.5
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.
 Current work is validation/profiling and documented API limitations:

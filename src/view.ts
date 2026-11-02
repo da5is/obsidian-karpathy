@@ -4,13 +4,45 @@ import { displayDate, relativeDate } from "./dates";
 import { themeTagColor } from "./settings";
 import type KarpathyPlugin from "./main";
 import type { Draft } from "./main";
-import { Cursor, entryPath, Entry, entryPrefix, parseEntries, taskRanges, toggleTask, uniqueId } from "./model";
+import { Cursor, entryPath, Entry, entryPrefix, markDone, parseEntries, taskRanges, toggleTask, uniqueId } from "./model";
 
 export const VIEW_TYPE = "karpathy-stream";
 const WINDOW_SIZE = 120;
-interface Row { element: HTMLElement; component: Component; signature: string }
+// `source` is compared by value but usually shares the cached string, so reuse
+// checks stay cheap; color and query changes update rows in place.
+interface Row { element: HTMLElement; component: Component; signature: string; source: string; color?: string; query?: string; content: HTMLElement; tags?: HTMLElement }
 interface Anchor { id: string; top: number }
 function entryKey(entry: Entry): string { return `${entry.path}#${entry.id}`; }
+function searchTerms(query: string): string[] { return query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean); }
+
+// Wrap search terms in <mark>, first removing earlier highlights. Text only.
+function highlight(root: HTMLElement, terms: string[]): void {
+  for (const mark of Array.from(root.querySelectorAll("mark.karpathy-match"))) mark.replaceWith(...Array.from(mark.childNodes));
+  root.normalize();
+  if (!terms.length) return;
+  const doc = root.ownerDocument;
+  const pattern = new RegExp(terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
+  const walker = doc.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const node of nodes) {
+    const text = node.data;
+    const matches = Array.from(text.matchAll(pattern));
+    if (!matches.length) continue;
+    const fragment = doc.createDocumentFragment();
+    let last = 0;
+    for (const match of matches) {
+      fragment.append(text.slice(last, match.index));
+      const mark = doc.createElement("mark");
+      mark.className = "karpathy-match";
+      mark.textContent = match[0];
+      fragment.append(mark);
+      last = match.index! + match[0].length;
+    }
+    fragment.append(text.slice(last));
+    node.replaceWith(fragment);
+  }
+}
 
 function rescueHistory(entry: Entry): string {
   const count = entry.rescues ?? 0;
@@ -36,6 +68,10 @@ export class KarpathyView extends ItemView {
   private newer!: HTMLButtonElement;
   private progress!: HTMLElement;
   private search!: HTMLInputElement;
+  private searchBar!: HTMLElement;
+  private searchToggle!: HTMLButtonElement;
+  private counted = false;
+  private todoIcon = "";
   private rows = new Map<string, Row>();
   private items: Entry[] = [];
   private before: Cursor = { file: 0, offset: 0 };
@@ -57,7 +93,7 @@ export class KarpathyView extends ItemView {
   getViewType(): string { return VIEW_TYPE; }
   getDisplayText(): string { return "Karpathy"; }
   getIcon(): string { return "notebook-pen"; }
-  get hasDraft(): boolean { return this.saving || !!this.editor?.pending || !!this.editor?.body.trim(); }
+  get hasDraft(): boolean { return this.saving || !!this.editor?.pending || (!!this.editor && !this.editor.isBlank); }
   indexProgress(remaining: number, total: number): void {
     if (remaining && !this.closed && this.subtitle) this.subtitle.setText(`Indexing ${total - remaining} of ${total} notes…`);
   }
@@ -89,7 +125,7 @@ export class KarpathyView extends ItemView {
     this.heading = titles.createEl("h1");
     this.updateDateHeading();
     this.subtitle = titles.createDiv({ cls: "karpathy-subtitle" });
-    const searchToggle = header.createEl("button", { cls: "karpathy-search-toggle", attr: { type: "button", title: "Search notes", "aria-label": "Search notes", "aria-expanded": "false" } });
+    const searchToggle = this.searchToggle = header.createEl("button", { cls: "karpathy-search-toggle", attr: { type: "button", title: "Search notes", "aria-label": "Search notes", "aria-expanded": "false" } });
     setIcon(searchToggle, "search");
     const capture = this.scroller.createDiv({ cls: "karpathy-capture karpathy-column" });
     this.captureStatus = capture.createDiv({ cls: "karpathy-capture-status", attr: { role: "status", "aria-live": "polite" } });
@@ -111,7 +147,7 @@ export class KarpathyView extends ItemView {
     this.saveButton.addEventListener("mousedown", event => event.preventDefault());
     this.saveButton.addEventListener("click", () => { this.editor?.focus(); void this.save(); });
     this.createEditor(capture);
-    const searchBar = header.createDiv({ cls: "karpathy-search" });
+    const searchBar = this.searchBar = header.createDiv({ cls: "karpathy-search" });
     searchBar.hidden = true;
     this.search = searchBar.createEl("input", { type: "search", attr: { placeholder: "Search the stream...", "aria-label": "Search all entries" } });
     const closeSearch = () => {
@@ -172,6 +208,34 @@ export class KarpathyView extends ItemView {
     this.editor?.focus();
   }
 
+  // Show only entries containing a prefix (e.g. "todo:") or tag (e.g. "#idea").
+  filterBy(term: string): void {
+    if (this.closed || !this.search) return;
+    this.searchBar.hidden = false;
+    this.searchToggle.setAttribute("aria-expanded", "true");
+    window.clearTimeout(this.searchTimer);
+    this.search.value = term;
+    this.query = term;
+    void this.refresh(false).catch(error => this.plugin.report(error));
+  }
+
+  private undoNotice(message: string, undo: () => Promise<void>): void {
+    const doc = this.contentEl.ownerDocument;
+    const fragment = doc.createDocumentFragment();
+    fragment.append(`${message} `);
+    const button = doc.createElement("button");
+    button.className = "karpathy-undo";
+    button.textContent = "Undo";
+    fragment.append(button);
+    const notice = new Notice(fragment, 8000);
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      notice.hide();
+      void undo().then(() => this.plugin.changed()).catch(error => this.plugin.report(error));
+    });
+  }
+
   private createEditor(capture: HTMLElement): void {
     const base = this.plugin.settings.baseFolder;
     this.draftKey = this.plugin.draftKey();
@@ -186,19 +250,22 @@ export class KarpathyView extends ItemView {
     }
     this.draft = this.plugin.readDraft(this.draftKey);
     const host = capture.createDiv({ cls: "karpathy-editor" });
-    this.editor = new CaptureEditor(host, {
+    let editor!: CaptureEditor;
+    this.editor = editor = new CaptureEditor(host, {
       body: this.draft?.body ?? "",
       colors: this.plugin.settings.prefixColors,
       tripleEnter: true,
       fetchTitles: () => this.plugin.settings.fetchUrlTitles,
       completeLink: this.plugin.links.source(() => entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
       resolveImage: link => this.plugin.imageSource(link, entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
-      change: body => {
-        if (body.trim()) {
-          this.draft ??= { id: uniqueId(), timestamp: new Date().toISOString(), body };
-          this.draft.body = body;
-        } else this.draft = null;
-        this.plugin.writeDraft(this.draftKey, this.draft);
+      change: () => {
+        if (!editor.isBlank) {
+          const draft = this.draft ??= { id: uniqueId(), timestamp: new Date().toISOString(), body: "" };
+          this.plugin.writeDraft(this.draftKey, () => ({ ...draft, body: editor.body }));
+        } else {
+          this.draft = null;
+          this.plugin.writeDraft(this.draftKey, null);
+        }
         this.updateCaptureStatus();
       },
       save: () => { void this.save(); },
@@ -216,14 +283,15 @@ export class KarpathyView extends ItemView {
 
   private updateCaptureStatus(): void {
     const uploading = !!this.editor?.pending;
-    this.saveButton.disabled = this.saving || uploading || !this.editor?.body.trim();
+    this.saveButton.disabled = this.saving || uploading || !this.editor || this.editor.isBlank;
     for (const button of this.attachmentButtons) button.disabled = this.saving || !this.editor;
-    const prefix = entryPrefix(this.editor?.body ?? "")?.[1].toLowerCase();
+    const prefix = this.editor?.prefix;
     const todoLabel = prefix === "done" ? "Completed" : prefix === "todo" ? "Mark done" : "Add todo";
     this.todoButton.disabled = this.saving || !this.editor || prefix === "done";
     this.todoButton.title = todoLabel;
     this.todoButton.setAttribute("aria-label", todoLabel);
-    setIcon(this.todoButton, prefix === "todo" || prefix === "done" ? "circle-check" : "list-todo");
+    const icon = prefix === "todo" || prefix === "done" ? "circle-check" : "list-todo";
+    if (icon !== this.todoIcon) { this.todoIcon = icon; setIcon(this.todoButton, icon); }
     const large = (this.editor?.view.state.doc.length ?? 0) > 100000;
     this.captureStatus.setText(this.saving ? "Saving..." : uploading ? "Saving attachments..." : large ? "Large draft: source editing, without line wrapping." : "");
     this.captureStatus.hidden = !this.saving && !uploading && !large;
@@ -232,7 +300,7 @@ export class KarpathyView extends ItemView {
   private async save(): Promise<void> {
     if (!this.editor || this.saving) return;
     if (this.editor.pending) { new Notice("Wait for attachments to finish before saving."); return; }
-    if (!this.draft || !this.editor.body.trim()) return;
+    if (!this.draft || this.editor.isBlank) return;
     this.saving = true;
     this.editor.lock(true);
     this.updateCaptureStatus();
@@ -293,7 +361,8 @@ export class KarpathyView extends ItemView {
     const generation = ++this.generation;
     this.loading = true;
     this.updateDateHeading();
-    this.subtitle.setText("Counting notes…");
+    // Keep the last count visible while refreshing; only the first load says counting.
+    if (!this.counted) this.subtitle.setText("Counting notes…");
     try {
     const cursor = first ? await this.plugin.store.cursorFor(first) : { file: 0, offset: 0 };
     if (generation !== this.generation || this.closed) return;
@@ -306,8 +375,10 @@ export class KarpathyView extends ItemView {
     await this.read(1, generation, limit, anchor);
     if (generation === this.generation && !this.closed) {
       void this.plugin.store.countEntries(() => generation === this.generation && !this.closed).then(count => {
-        if (count !== null && generation === this.generation && !this.closed)
+        if (count !== null && generation === this.generation && !this.closed) {
+          this.counted = true;
           this.subtitle.setText(`${count.toLocaleString()} ${count === 1 ? "note" : "notes"} captured${this.plugin.store.failures.size ? ` · ${this.plugin.store.failures.size} unavailable; retrying automatically` : ""}`);
+        }
       }).catch(error => this.plugin.report(error));
     }
     } catch (error) {
@@ -409,6 +480,7 @@ export class KarpathyView extends ItemView {
     if (!valid()) return;
     this.editor?.updateColors(this.plugin.settings.prefixColors);
     const keep = new Set(this.items.map(entryKey));
+    const terms = searchTerms(this.query);
     for (const [id, row] of this.rows) {
       if (!keep.has(id)) { row.element.remove(); this.removeChild(row.component); this.rows.delete(id); }
     }
@@ -416,9 +488,12 @@ export class KarpathyView extends ItemView {
     for (const entry of this.items) {
       if (!valid()) return;
       const key = entryKey(entry);
-      const signature = `${entry.source}\n${entry.path}\n${entry.timestamp}\n${entry.created}\n${entry.rescues}\n${entry.conflict}\n${entry.body}\n${JSON.stringify(this.plugin.settings.prefixColors)}`;
+      const signature = `${entry.path}\n${entry.timestamp}\n${entry.created}\n${entry.rescues}\n${entry.conflict}`;
+      const sourceText = entry.source ?? entry.body;
+      const prefix = entryPrefix(entry.body)?.[1].toLowerCase();
+      const color = prefix ? this.plugin.settings.prefixColors[prefix] : undefined;
       let row = this.rows.get(key);
-      if (row && row.signature !== signature) {
+      if (row && (row.signature !== signature || row.source !== sourceText)) {
         row.element.remove();
         this.removeChild(row.component);
         this.rows.delete(key);
@@ -434,6 +509,21 @@ export class KarpathyView extends ItemView {
         const date = new Date(entry.timestamp);
         meta.createDiv({ text: rescueHistory(entry), cls: "karpathy-rescue-meta", attr: { title: `Written: ${displayDate(new Date(entry.created ?? entry.timestamp), { time: true })}${entry.rescues ? `; last rescued: ${displayDate(date, { time: true })}` : ""}` } });
         const actions = meta.createDiv({ cls: "karpathy-entry-actions" });
+        if (prefix === "todo") {
+          const done = actions.createEl("button", { cls: "karpathy-done", attr: { "aria-label": "Mark entry done", title: "Mark done" } });
+          setIcon(done.createSpan({ cls: "karpathy-action-icon" }), "circle-check");
+          done.createSpan({ cls: "karpathy-action-label", text: "Done" });
+          done.addEventListener("click", () => {
+            if (done.disabled) return;
+            done.disabled = true;
+            void (async () => {
+              const body = markDone(entry.body);
+              await this.plugin.store.update(entry, body);
+              await this.plugin.rememberPrefix(body).catch(error => this.plugin.report(error));
+              this.plugin.changed();
+            })().catch(error => { done.disabled = false; this.plugin.report(error); });
+          });
+        }
         const rescue = actions.createEl("button", { text: "↑ Rescue", attr: { "aria-label": "Rescue entry to the top", title: "Rescue to the top" } });
         rescue.empty();
         setIcon(rescue.createSpan({ cls: "karpathy-action-icon" }), "arrow-up");
@@ -446,6 +536,7 @@ export class KarpathyView extends ItemView {
             this.query = "";
             this.search.value = "";
             await this.refresh(false);
+            this.undoNotice("Entry rescued to the top.", () => this.plugin.store.undoRescue(entry));
           } catch (error) { this.plugin.report(error); }
           finally { rescue.disabled = false; }
         };
@@ -475,6 +566,7 @@ export class KarpathyView extends ItemView {
           menu.addItem(item => item.setTitle("Delete entry").setIcon("trash-2").setWarning(true).onClick(() => {
             new ConfirmDelete(this.plugin, entry, () => {
               void this.refresh(true).catch(error => this.plugin.report(error));
+              this.undoNotice("Entry moved to trash.", () => this.plugin.store.restoreDeleted(entry));
             }).open();
           }));
           menu.showAtMouseEvent(event);
@@ -492,8 +584,17 @@ export class KarpathyView extends ItemView {
         if (!valid()) { this.removeChild(component); return; }
         const tags = Array.from(content.querySelectorAll<HTMLAnchorElement>("a.tag"))
           .filter(tag => !tag.closest(".internal-embed, pre, code"));
+        let tagRow: HTMLElement | undefined;
         if (tags.length) {
-          const tagRow = surface.createDiv({ cls: "karpathy-entry-tags" });
+          tagRow = surface.createDiv({ cls: "karpathy-entry-tags" });
+          // A plain click filters this stream; Ctrl/Cmd-click keeps Obsidian's tag search.
+          tagRow.addEventListener("click", event => {
+            const tag = (event.target as Element | null)?.closest?.("a.tag");
+            if (!tag || event.ctrlKey || event.metaKey) return;
+            event.preventDefault();
+            event.stopPropagation();
+            this.filterBy((tag.textContent ?? "").toLocaleLowerCase());
+          }, { capture: true });
           tagRow.createSpan({ text: "tags: " });
           for (const tag of tags) {
             const paragraph = tag.closest("p");
@@ -515,9 +616,9 @@ export class KarpathyView extends ItemView {
           void this.plugin.openStreamLink(href, entry.path).catch(error => this.plugin.report(error));
         }, { capture: true });
         for (const image of content.querySelectorAll("img")) { image.loading = "lazy"; image.decoding = "async"; }
-        this.colorPrefix(content);
+        this.colorPrefix(content, color);
         const checkboxes = Array.from(content.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
-        const supportedTasks = taskRanges(entry.body).length === checkboxes.length;
+        const supportedTasks = !checkboxes.length || taskRanges(entry.body).length === checkboxes.length;
         checkboxes.forEach((checkbox, index) => {
           checkbox.disabled = !supportedTasks;
           if (!supportedTasks) checkbox.title = "Use Edit or Source to update this checklist syntax.";
@@ -539,25 +640,45 @@ export class KarpathyView extends ItemView {
             });
           });
         });
-        row = { component, element, signature };
+        row = { component, element, signature, source: sourceText, color, content, tags: tagRow };
         this.rows.set(key, row);
+      } else if (row.color !== color) {
+        row.color = color;
+        this.colorPrefix(row.content, color);
+        row.query = undefined;
+      }
+      if (row.query !== this.query) {
+        row.query = this.query;
+        highlight(row.content, terms);
+        if (row.tags) highlight(row.tags, terms);
       }
       const target = this.list.children.item(position++);
       if (target !== row.element) this.list.insertBefore(row.element, target);
     }
   }
 
-  private colorPrefix(content: HTMLElement): void {
+  private colorPrefix(content: HTMLElement, color: string | undefined): void {
+    const existing = content.querySelector<HTMLElement>("p > strong.karpathy-prefix:first-child");
+    if (existing) {
+      if (color) { existing.style.color = color; return; }
+      existing.replaceWith(existing.textContent ?? "");
+      content.normalize();
+      return;
+    }
     const node = content.querySelector("p")?.firstChild;
     if (!node || node.nodeType !== Node.TEXT_NODE) return;
     const match = entryPrefix(node.textContent ?? "");
-    if (!match) return;
-    const color = this.plugin.settings.prefixColors[match[1].toLowerCase()];
-    if (!color) return;
-    const span = document.createElement("strong");
+    if (!match || !color) return;
+    const span = content.ownerDocument.createElement("strong");
     span.className = "karpathy-prefix";
     span.style.color = color;
     span.textContent = match[0];
+    span.tabIndex = 0;
+    span.setAttribute("role", "button");
+    span.title = `Show entries with ${match[0].toLowerCase()}`;
+    const filter = () => this.filterBy(match[0].toLowerCase());
+    span.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); filter(); });
+    span.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); filter(); } });
     node.textContent = node.textContent?.slice(match[0].length) ?? "";
     node.parentNode?.insertBefore(span, node);
   }
@@ -631,13 +752,14 @@ class EntryEditor extends Modal {
     this.button = actions.createEl("button", { text: "Save", cls: "mod-cta karpathy-save", attr: { type: "button" } });
     this.button.addEventListener("mousedown", event => event.preventDefault());
     this.button.addEventListener("click", () => { void this.save(); });
-    this.editor = new CaptureEditor(host, {
+    let editor!: CaptureEditor;
+    this.editor = editor = new CaptureEditor(host, {
       body: this.draft.body, colors: this.plugin.settings.prefixColors, tripleEnter: false,
       completeLink: this.plugin.links.source(() => this.entry.path),
       resolveImage: link => this.plugin.imageSource(link, this.entry.path),
-      change: body => {
-        this.draft.body = body;
-        this.plugin.writeDraft(this.key, this.draft);
+      change: () => {
+        const draft = this.draft;
+        this.plugin.writeDraft(this.key, () => ({ ...draft, body: editor.body }));
         this.updateActions();
       },
       save: () => { void this.save(); },
@@ -671,9 +793,9 @@ class EntryEditor extends Modal {
     this.editor.focus();
   }
   private updateActions(): void {
-    this.button.disabled = this.saving || !!this.editor?.pending || !this.editor?.body.trim();
+    this.button.disabled = this.saving || !!this.editor?.pending || !this.editor || this.editor.isBlank;
     for (const button of this.attachmentButtons) button.disabled = this.saving || !this.editor;
-    const prefix = entryPrefix(this.editor?.body ?? "")?.[1].toLowerCase();
+    const prefix = this.editor?.prefix;
     const label = prefix === "done" ? "Completed" : prefix === "todo" ? "Mark done" : "Add todo";
     this.todoButton.disabled = this.saving || !this.editor || prefix === "done";
     this.todoButton.title = label;
@@ -683,7 +805,7 @@ class EntryEditor extends Modal {
   private async save(): Promise<void> {
     if (!this.editor || this.saving) return;
     if (this.editor.pending) { new Notice("Wait for attachments to finish."); return; }
-    if (!this.editor.body.trim()) { new Notice("An entry cannot be empty."); return; }
+    if (this.editor.isBlank) { new Notice("An entry cannot be empty."); return; }
     this.saving = true;
     this.updateActions();
     this.editor.lock(true);

@@ -10,25 +10,33 @@ Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 The tag `known-good-2.2.13` marks the last release before the 2.3.0
 performance/usability pass; revert to it if 2.3.0 misbehaves natively.
 
-2.3.1 is documentation-only relative to 2.3.0 (backlog, AGENTS.md, handoff and
-development instructions).
-
-2.3.3 lets Edit save with three Enters at the end, like capture (KAR-032,
-user request); 151 automated tests pass. Native check pending.
+2.3.3 (current) lets Edit save with three Enters at the end, like capture
+(KAR-032, user request). The gesture uses capture's reset rules and list/image
+handling; trailing newlines are trimmed on save. 151 automated tests pass.
 
 2.3.2 fixes a 2.3.0 regression (KAR-030): a stream tab restored at launch stayed
 empty until something was captured, because nothing refreshed it after the
 vault finished loading. Any view-visible startup change must keep the
-layout-ready refresh. 148 automated tests pass; native confirmation pending.
+layout-ready refresh. A follow-up audit of all 2.3.0 changes found no similar
+defects and added an offline-edit startup test (see KAR-030 in the backlog).
+
+2.3.1 is documentation-only relative to 2.3.0. Later documentation-only and
+test-only commits on `main` are intentionally unreleased.
+
+KAR-031 is an unconfirmed, unreproduced report: a hashtag added through Edit
+did not appear in the stream, then worked without a code change. If it recurs,
+check whether **Refresh stream and cache** makes the tag appear before changing
+code.
 
 **Recommended next step:** on a machine with Obsidian desktop, generate a fresh
-test vault and run smoke checks 1–13 in `docs/development.md`, prioritizing 9–13
-(filters, Done, Undo, highlights, warm startup, macOS/Linux file paste). Confirm
-a stream tab left open at quit shows entries immediately after relaunch (KAR-030). 2.3.0
-changed startup event timing (KAR-017), so confirm entries edited while
-Obsidian was closed still appear updated after launch. Record results in
+test vault and run smoke checks 1–13 in `docs/development.md`, prioritizing 2
+(three-Enter save in capture and Edit) and 9–13 (filters, Done, Undo,
+highlights, warm startup, macOS/Linux file paste, relaunch with the stream
+open). 2.3.0 changed startup event timing (KAR-017), so also confirm entries
+edited while Obsidian was closed appear updated after launch. Record results in
 `docs/compatibility.md`; if startup or Undo misbehaves, revert to
-`known-good-2.2.13` and log the failure as a KAR item.
+`known-good-2.2.13` and log the failure as a KAR item. The next code release
+is 2.3.4.
 
 2.3.0 works through KAR-016–KAR-029 (see `docs/backlog.md`): `main.js` drops
 from 269 KB to 132 KB by not bundling embedded HTML/CSS/JS parsers; vault events
@@ -109,8 +117,9 @@ was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from
 the computer-use tool; do not call that release physically validated.
 
-Open work: native checks for 2.3.0 (warm startup, filters/Done/Undo/highlight
-visuals, Finder/Linux file paste); physical iPhone/iPad/Android input, clipboard, lifecycle and memory;
+Open work: native checks for 2.3.0–2.3.3 (warm startup, relaunch with the stream
+open, filters/Done/Undo/highlight visuals, Finder/Linux file paste, three-Enter
+save in Edit); watch for a recurrence of KAR-031; physical iPhone/iPad/Android input, clipboard, lifecycle and memory;
 minimum/current Obsidian and macOS/Linux; native pop-outs; OneDrive conflicts
 and trash recovery; image-heavy memory; autocomplete filtering/painting; variable
 cold indexing. URL fetching still lacks host-level abort/download bounds.

@@ -97,7 +97,7 @@ re-renders. No further defects found:
   movement, paste, Shift+Enter, focus loss) and list/image handling. Trailing
   newlines are trimmed on save. Native check pending.
 
-## Outstanding validation work — updated 2026-11-02, 2.3.0
+## Outstanding validation work — updated 2026-11-03, 2.3.3
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.
 Current work is validation/profiling and documented API limitations:
@@ -107,6 +107,10 @@ Current work is validation/profiling and documented API limitations:
   appearance in light/dark themes (KAR-024–KAR-026, KAR-029); real Finder and
   Linux file-manager file paste (KAR-028). Revert to `known-good-2.2.13` if a
   2.3.x release misbehaves natively.
+- 2.3.2/2.3.3 native checks: a stream tab left open at quit shows entries right
+  after relaunch (KAR-030); three Enters at the end save and close Edit
+  (KAR-032). Watch for a recurrence of the unconfirmed Edit hashtag report
+  (KAR-031).
 - Physical iPhone/iPad/Android keyboards, clipboard, background/resume, cache
   eviction, attachment behavior, scrolling latency, and peak memory.
 - Minimum/current Obsidian, macOS/Linux, and native pop-out integration.

@@ -83,6 +83,14 @@ re-renders. No further defects found:
 - Native clipboard paths are read only when the paste event has no files, so
   Chromium-supplied files are not attached twice.
 
+- **KAR-031 (unconfirmed, 2026-11-03, 2.3.2): Hashtag added through Edit not
+  shown.** Desktop, Edit button then Save: the saved note contained the tag
+  (visible on reopening Edit) but the stream showed no tag; it later worked
+  without a code change. Not reproduced with mocks, including vault modify
+  events and the real refresh path; `view.test.ts` now covers the flow. If it
+  recurs, note whether **Refresh stream and cache** makes the tag appear
+  (stale row/cache) or not (rendering/tag extraction).
+
 ## Outstanding validation work — updated 2026-11-02, 2.3.0
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.

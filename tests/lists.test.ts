@@ -101,7 +101,7 @@ test("Shift+Enter inserts only a newline; code and escaped bullets are not conti
   } finally { await close(); }
 });
 
-test("Edit uses the same list behavior without submitting on Enter", async () => {
+test("with triple-Enter disabled, lists behave the same without submitting on Enter", async () => {
   const { editor, saved, close } = fixture("- original", false);
   try {
     enter(editor);

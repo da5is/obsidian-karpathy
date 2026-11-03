@@ -754,7 +754,7 @@ class EntryEditor extends Modal {
     this.button.addEventListener("click", () => { void this.save(); });
     let editor!: CaptureEditor;
     this.editor = editor = new CaptureEditor(host, {
-      body: this.draft.body, colors: this.plugin.settings.prefixColors, tripleEnter: false,
+      body: this.draft.body, colors: this.plugin.settings.prefixColors, tripleEnter: true,
       completeLink: this.plugin.links.source(() => this.entry.path),
       resolveImage: link => this.plugin.imageSource(link, this.entry.path),
       change: () => {
@@ -768,7 +768,7 @@ class EntryEditor extends Modal {
       scope: this.scope,
       busy: busy => {
         this.updateActions();
-        this.status.setText(busy ? "Saving attachments..." : "Ctrl/Cmd+Enter to save. Closing keeps your draft.");
+        this.status.setText(busy ? "Saving attachments..." : "Ctrl/Cmd+Enter or three Enters at the end to save. Closing keeps your draft.");
       }
     });
     this.updateActions();
@@ -789,7 +789,7 @@ class EntryEditor extends Modal {
         })().catch(error => this.plugin.report(error));
       }).open();
     });
-    this.status.setText("Ctrl/Cmd+Enter to save. Closing keeps your draft.");
+    this.status.setText("Ctrl/Cmd+Enter or three Enters at the end to save. Closing keeps your draft.");
     this.editor.focus();
   }
   private updateActions(): void {

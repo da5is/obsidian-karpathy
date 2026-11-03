@@ -61,7 +61,8 @@ for the native host. Record app/OS versions and actual observations separately
 from mocked tests. If the host is unavailable, state that gap explicitly.
 
 1. Open stream; check count, theme headings, separators, actions, and scrolling.
-2. Capture plain text with Save, Ctrl/Cmd+Enter, and three consecutive Enters.
+2. Capture plain text with Save, Ctrl/Cmd+Enter, and three consecutive Enters;
+   also save an Edit with three Enters at the end and confirm the window closes.
    Verify focus and an empty first line afterward. For a normal bullet, confirm
    continue / exit / spacing / send takes four presses. For an image line, the
    first press moves below it, then three more send. Check that typing or

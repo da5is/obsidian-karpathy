@@ -4,7 +4,7 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-02, 2.3.2
+## Current snapshot — 2026-11-03, 2.3.3
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 The tag `known-good-2.2.13` marks the last release before the 2.3.0
@@ -12,6 +12,9 @@ performance/usability pass; revert to it if 2.3.0 misbehaves natively.
 
 2.3.1 is documentation-only relative to 2.3.0 (backlog, AGENTS.md, handoff and
 development instructions).
+
+2.3.3 lets Edit save with three Enters at the end, like capture (KAR-032,
+user request); 151 automated tests pass. Native check pending.
 
 2.3.2 fixes a 2.3.0 regression (KAR-030): a stream tab restored at launch stayed
 empty until something was captured, because nothing refreshed it after the
@@ -76,8 +79,8 @@ physical keyboard autocorrection remains to be verified on mobile.
   bullet, add spacing, send. Nested continuation/outdent steps do not count;
   outermost list exit starts the save count. Enter at the end of an image/embed
   line moves below it without counting; three further Enters send. The next
-  capture stays empty and focused on its first line. Edit does not submit on
-  repeated plain Enter.
+  capture stays empty and focused on its first line. Since 2.3.3 Edit uses the
+  same gesture: three Enters at the end save and close the edit window.
 - Wikilink completion offers filenames/aliases across the vault. Clipboard link
   labels prefer selected editor text, then matching HTML clipboard labels, then
   optional network title lookup, otherwise the bare URL. Preserve ordinary rich
@@ -99,8 +102,8 @@ physical keyboard autocorrection remains to be verified on mobile.
 
 ## Validation and outstanding work
 
-148 automated tests, TypeScript, and production bundling pass on Linux/Node 26
-for 2.3.2 (earlier releases: Windows/Node 24).
+151 automated tests, TypeScript, and production bundling pass on Linux/Node 26
+for 2.3.3 (earlier releases: Windows/Node 24).
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from

@@ -91,6 +91,12 @@ re-renders. No further defects found:
   recurs, note whether **Refresh stream and cache** makes the tag appear
   (stale row/cache) or not (rendering/tag extraction).
 
+- **KAR-032 (usability, user request, 2.3.3): Three-Enter save in Edit.** Edit
+  previously ignored the gesture by design; it now saves and closes the edit
+  window like capture's gesture, with the same reset rules (typing, cursor
+  movement, paste, Shift+Enter, focus loss) and list/image handling. Trailing
+  newlines are trimmed on save. Native check pending.
+
 ## Outstanding validation work — updated 2026-11-02, 2.3.0
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.

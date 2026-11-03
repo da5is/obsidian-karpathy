@@ -1076,3 +1076,29 @@ test("adding a hashtag in Edit shows it in the stream after saving", async () =>
     await view.onClose(); await plugin.store.close();
   }
 });
+
+test("three Enters at the end save an edited entry and close Edit; earlier Enters keep editing", async () => {
+  const { plugin, view } = fixture();
+  await plugin.store.capture("Original thought", new Date(2026, 10, 2, 9), "triple-edit");
+  await view.onOpen();
+  try {
+    view.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+    const modal = document.querySelector<HTMLElement>(".karpathy-edit-modal")!;
+    const editorView = EditorView.findFromDOM(modal.querySelector<HTMLElement>(".cm-editor")!)!;
+    editorView.dispatch({ changes: { from: editorView.state.doc.length, insert: " #later" }, selection: { anchor: editorView.state.doc.length + 7 } });
+    const enter = () => editorView.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    enter(); enter();
+    assert.equal(editorView.state.doc.toString(), "Original thought #later\n\n");
+    assert.ok(document.querySelector(".karpathy-edit-modal"));
+    enter();
+    await until(() => plugin.editing === 0);
+    assert.equal(document.querySelector(".karpathy-edit-modal"), null);
+    const saved = (await plugin.store.entries(plugin.store.files[0]))[0];
+    assert.equal(saved.id, "triple-edit");
+    assert.equal(saved.body, "Original thought #later");
+    assert.equal(plugin.readDraft(plugin.draftKey(saved)), null);
+  } finally {
+    for (const draft of plugin["draftOwners"].values()) if ("close" in draft.owner) (draft.owner as any).close();
+    await view.onClose(); await plugin.store.close();
+  }
+});

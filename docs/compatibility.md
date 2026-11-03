@@ -1,6 +1,10 @@
 # Compatibility and performance checks
 
-Release: 2.3.2. All timing values below are milliseconds.
+Release: 2.3.3. All timing values below are milliseconds.
+
+2.3.3 enables the three-Enter save gesture in Edit (KAR-032). 151 automated tests
+and the build pass on Linux/Node 26.13; the new Edit test fails without the
+change. Native confirmation pending.
 
 2.3.2 fixes an empty stream after Obsidian starts (KAR-030): a stream tab
 restored before the vault finished loading was not refreshed when entries were

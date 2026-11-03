@@ -1049,3 +1049,30 @@ test("a stream opened before the vault finishes loading shows entries once layou
     await until(() => !!view.contentEl.querySelector('[data-entry-id="late"]'));
   } finally { await view.onClose(); await plugin.store.close(); await plugin.links.close(); }
 });
+
+test("adding a hashtag in Edit shows it in the stream after saving", async () => {
+  const { plugin, view } = fixture();
+  const render = MarkdownRenderer.render;
+  MarkdownRenderer.render = async (app, body, element) => {
+    await render(app, body.replace(/(^|\s)#[\w/-]+/g, ""), element);
+    for (const match of body.matchAll(/(?:^|\s)(#[\w/-]+)/g)) element.createEl("a", { cls: "tag", text: match[1], attr: { href: match[1] } });
+  };
+  plugin.changed = () => { void view.refresh(true); };
+  await plugin.store.capture("An idea", new Date(2026, 10, 2, 9), "hashtag");
+  await view.onOpen();
+  try {
+    assert.equal(view.contentEl.querySelector(".karpathy-entry-tags"), null);
+    view.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+    const modal = document.querySelector<HTMLElement>(".karpathy-edit-modal")!;
+    const editorView = EditorView.findFromDOM(modal.querySelector<HTMLElement>(".cm-editor")!)!;
+    editorView.dispatch({ changes: { from: editorView.state.doc.length, insert: " #later" } });
+    modal.querySelector<HTMLButtonElement>(".karpathy-save")!.click();
+    await until(() => plugin.editing === 0);
+    await until(() => !!view.contentEl.querySelector('[data-entry-id="hashtag"] .karpathy-entry-tags'));
+    assert.equal(view.contentEl.querySelector('[data-entry-id="hashtag"] .karpathy-entry-tags a.tag')?.textContent, "#later");
+  } finally {
+    MarkdownRenderer.render = render;
+    for (const draft of plugin["draftOwners"].values()) if ("close" in draft.owner) (draft.owner as any).close();
+    await view.onClose(); await plugin.store.close();
+  }
+});

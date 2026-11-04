@@ -39,7 +39,7 @@ mobile input and narrow screenshots do not establish physical-device support.
 ## Delivery and Documentation
 
 Use imperative commit messages and describe behavior, validation, and limitations.
-Update affected README, handoff, storage, backlog, and compatibility instructions;
+Update affected README, usage, handoff, storage, backlog, and compatibility instructions;
 keep historical measurements clearly labeled. Include screenshots for visible
 changes where useful.
 

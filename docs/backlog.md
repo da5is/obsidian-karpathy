@@ -106,7 +106,43 @@ re-renders. No further defects found:
   when present, otherwise per-file `getAllTags`. Native check pending,
   including that `getTags()` exists and suggestions refresh after a new tag is saved.
 
-## Outstanding validation work — updated 2026-11-04, 2.3.4
+## Performance and stability review — 2026-11-04, 2.3.4
+
+Source review of all modules (no native profiling). Items KAR-034–KAR-037 were
+fixed in 2.3.5 with regression tests that fail against 2.3.4. Not fixed, kept
+for later: search highlighting walks into SVG/math text nodes and could break
+diagrams while searching; the rebuild loop has no no-progress guard; one
+IndexedDB error disables the local index for the session; captures, rescues and
+deletes refresh the stream twice; minor per-keystroke/per-minute DOM work
+(Edit todo icon, clock labels).
+
+- **KAR-034 (performance, fixed in 2.3.5): Folder events rebuilt the link
+  cache.** Any folder create, rename or delete anywhere in the vault cleared
+  the wikilink cache, re-read metadata for every file and rewrote every record
+  to IndexedDB — including a new month's first capture or attachment. Folder
+  events now update only files under that folder (before the first index
+  completes, the build still restarts). A new empty folder also no longer
+  re-enumerates stream entries or refreshes views. Native check pending:
+  folder rename/delete in Obsidian.
+- **KAR-035 (performance, fixed in 2.3.5): Background verification grew with
+  the stream.** It re-read and YAML-parsed about 1/15 of entries every minute,
+  even with no stream open. Now a whole-text fingerprint skips parsing unchanged
+  files, slices are capped at 256 files a minute, and verification runs only
+  while a stream view is open and Obsidian is visible. Native check pending:
+  pausing when hidden or minimized.
+- **KAR-036 (stability, fixed in 2.3.5): Unreadable files refreshed the stream
+  every minute.** Verification reported a change for any file that was
+  failing, or failed to read while still cached, every time. It now reports
+  only new failures and recoveries.
+- **KAR-037 (stability, fixed in 2.3.5): Draft storage.** A refused draft
+  write showed a notice on every flush (about every 250 ms while typing); now
+  one notice per draft until a write succeeds. Stored Edit drafts no longer
+  duplicate the entry's whole file text; conflicts are still detected by body,
+  time and rescue count. Edit drafts for notes that no longer exist are
+  removed at startup (only drafts written by 2.3.5 or later are tracked).
+  Native check pending: a real localStorage quota error.
+
+## Outstanding validation work — updated 2026-11-04, 2.3.5
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.
 Current work is validation/profiling and documented API limitations:
@@ -119,7 +155,9 @@ Current work is validation/profiling and documented API limitations:
 - 2.3.2/2.3.3 native checks: a stream tab left open at quit shows entries right
   after relaunch (KAR-030); three Enters at the end save and close Edit
   (KAR-032). 2.3.4: hashtag suggestions in capture and Edit, refreshed after
-  saving a new tag (KAR-033). Watch for a recurrence of the unconfirmed Edit hashtag report
+  saving a new tag (KAR-033). 2.3.5: folder rename/delete keeps link
+  suggestions correct (KAR-034); verification pauses while hidden (KAR-035).
+  Watch for a recurrence of the unconfirmed Edit hashtag report
   (KAR-031).
 - Physical iPhone/iPad/Android keyboards, clipboard, background/resume, cache
   eviction, attachment behavior, scrolling latency, and peak memory.

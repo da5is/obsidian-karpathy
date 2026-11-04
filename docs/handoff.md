@@ -4,13 +4,23 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-04, 2.3.4
+## Current snapshot — 2026-11-04, 2.3.5
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 The tag `known-good-2.2.13` marks the last release before the 2.3.0
 performance/usability pass; revert to it if 2.3.0 misbehaves natively.
 
-2.3.4 (current) adds hashtag autocomplete in capture and Edit (KAR-033, user
+2.3.5 (current) fixes performance and stability findings from a source review
+(KAR-034–KAR-037): folder events no longer rebuild the whole link cache;
+background verification skips parsing unchanged files, is capped at 256 files a
+minute, and runs only while a stream is open and visible; an unreadable file no
+longer refreshes the stream every minute; draft-write failures notify once, and
+Edit drafts are smaller and pruned when their note is gone. 163 automated tests
+pass on Linux/Node 26.13. Remaining review findings are listed in the backlog.
+Native checks pending: folder rename/delete link suggestions and verification
+pausing when Obsidian is hidden.
+
+2.3.4 adds hashtag autocomplete in capture and Edit (KAR-033, user
 request): `#` plus a character suggests existing vault tags; a fully typed tag
 does not use up an Enter of the save gesture. 155 automated tests pass on
 Linux/Node 26. Native verification, including that Obsidian's undocumented
@@ -42,8 +52,9 @@ open). 2.3.0 changed startup event timing (KAR-017), so also confirm entries
 edited while Obsidian was closed appear updated after launch. Check hashtag
 suggestions (smoke check 3) in capture and Edit. Record results in
 `docs/compatibility.md`; if startup or Undo misbehaves, revert to
-`known-good-2.2.13` and log the failure as a KAR item. The next code release
-is 2.3.5.
+`known-good-2.2.13` and log the failure as a KAR item. Also rename and delete a
+folder containing notes and confirm `[[` suggestions follow (KAR-034). The next
+code release is 2.3.6.
 
 2.3.0 works through KAR-016–KAR-029 (see `docs/backlog.md`): `main.js` drops
 from 269 KB to 132 KB by not bundling embedded HTML/CSS/JS parsers; vault events

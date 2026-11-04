@@ -7,6 +7,7 @@ import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { App, closeDOM, TFolder } from "./obsidian-mock";
 import { WikilinkIndex, wikilinkRange } from "../src/links";
+import { LocalIndex } from "../src/index";
 
 after(closeDOM);
 
@@ -174,5 +175,39 @@ test("metadata-only reconciliation is shared and body edits retain prepared opti
   const listings = app.vault.listings;
   await Promise.all([index.reconcile(), index.reconcile(), index.reconcile()]);
   assert.equal(app.vault.listings, listings + 1);
+  await index.close();
+});
+
+test("folder events update only that folder's files instead of rebuilding the index", async t => {
+  const app = new App();
+  for (let i = 0; i < 200; i++) await app.vault.create(`Notes/note-${i}.md`, "");
+  await app.vault.createFolder("Old");
+  const moved = await app.vault.create("Old/Moved.md", "");
+  const index = new WikilinkIndex(app);
+  const source = index.source(() => "day.md");
+  await index.prepare();
+  await new Promise(resolve => setTimeout(resolve, 150));
+  const written: number[] = [];
+  t.mock.method(LocalIndex.prototype, "updateLinks", async (values: unknown[]) => { written.push(values.length); });
+  const reads = app.cacheReads;
+  // A new month folder: nothing to re-read or rewrite.
+  index.changed(await app.vault.createFolder("Karpathy"));
+  assert.equal(app.cacheReads, reads);
+  assert.equal((await source(context("[[")))!.options.length, 201);
+  // Rename: the moved child is re-keyed; other files are untouched.
+  app.vault.files.delete("Old"); app.vault.files.delete(moved.path);
+  moved.path = "New/Moved.md";
+  const folder = await app.vault.createFolder("New");
+  app.vault.files.set(moved.path, moved);
+  index.changed(folder, "Old");
+  assert.equal(app.cacheReads - reads, 1);
+  const options = (await source(context("[[Mov")))!.options;
+  assert.deepEqual(options.filter(option => option.displayLabel === "Moved").map(option => option.detail), ["New/Moved.md"]);
+  // Delete: records under the folder are removed.
+  app.vault.files.delete("New"); app.vault.files.delete(moved.path);
+  index.changed(folder);
+  assert.equal((await source(context("[[")))!.options.length, 200);
+  await new Promise(resolve => setTimeout(resolve, 150));
+  assert.ok(written.every(count => count <= 2), `small link writes only: ${written}`);
   await index.close();
 });

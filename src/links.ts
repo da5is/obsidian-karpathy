@@ -122,7 +122,13 @@ export class WikilinkIndex {
   }
   changed(file: TAbstractFile, oldPath?: string): void {
     if (this.closed) return;
-    if (!(file instanceof TFile)) { this.clear(); void this.prepare(); return; }
+    if (!(file instanceof TFile)) {
+      // Before the first index completes, restart it; afterwards update only
+      // the folder's own files (a new month folder must not rebuild the vault).
+      if (!this.indexed) { this.clear(); void this.prepare(); }
+      else this.folderChanged(file, oldPath);
+      return;
+    }
     if (!this.indexed) this.touched.add(file.path);
     if (oldPath) { if (!this.indexed) this.touched.add(oldPath); this.records.delete(oldPath); this.queue(oldPath, undefined); this.revision++; }
     if (this.app.vault.getAbstractFileByPath(file.path) === file) this.add(file);
@@ -130,6 +136,20 @@ export class WikilinkIndex {
       if (this.records.delete(file.path)) this.revision++;
       this.queue(file.path, undefined);
     }
+  }
+  // Folder create/rename/delete: drop records under the old or removed path
+  // whose file is gone, then index whatever files are now inside the folder.
+  // Hosts that also report each moved child are handled idempotently.
+  private folderChanged(folder: TAbstractFile, oldPath?: string): void {
+    for (const prefix of [oldPath, folder.path]) {
+      if (!prefix) continue;
+      for (const path of [...this.records.keys()]) {
+        if (!path.startsWith(`${prefix}/`) || this.app.vault.getAbstractFileByPath(path) instanceof TFile) continue;
+        this.records.delete(path); this.queue(path, undefined); this.revision++;
+      }
+    }
+    if (!folder.path) return;
+    for (const file of this.app.vault.getFiles()) if (file.path.startsWith(`${folder.path}/`)) this.add(file);
   }
   // MetadataCache's resolved event covers aliases changed offline with unchanged stats.
   reconcile(): Promise<void> {

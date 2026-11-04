@@ -1102,3 +1102,69 @@ test("three Enters at the end save an edited entry and close Edit; earlier Enter
     await view.onClose(); await plugin.store.close();
   }
 });
+
+test("a new empty folder does not reindex the stream; a folder with files does", async () => {
+  const { app, plugin } = fixture();
+  let reindexed = 0, refreshed = 0;
+  const reindex = plugin.store.reindex.bind(plugin.store);
+  plugin.store.reindex = () => { reindexed++; reindex(); };
+  plugin.changed = () => { refreshed++; };
+  (plugin as any).fileChanged(await app.vault.createFolder("Karpathy"));
+  (plugin as any).fileChanged(await app.vault.createFolder("Karpathy/2026"));
+  assert.equal(reindexed, 0);
+  assert.equal(refreshed, 0);
+  const date = new Date(2026, 10, 2, 9);
+  await app.vault.createFolder("Karpathy/2026/2026-11");
+  await app.vault.create(entryPath("Karpathy", date, "synced"), serializeEntry("synced", date.toISOString(), "Synced"));
+  (plugin as any).fileChanged(app.vault.getAbstractFileByPath("Karpathy/2026/2026-11"));
+  assert.equal(reindexed, 1);
+  assert.equal(refreshed, 1);
+  await plugin.store.close(); await plugin.links.close();
+});
+
+test("draft storage failures notify once, and Edit drafts omit the duplicated file text", async () => {
+  const { app, plugin } = fixture();
+  const date = new Date(2026, 10, 2, 9);
+  await plugin.store.capture("Original body", date, "drafted");
+  const file = app.vault.getMarkdownFiles()[0];
+  const entry = (await plugin.store.entries(file))[0];
+  const key = plugin.draftKey(entry);
+  plugin.writeDraft(key, { body: "Changed", timestamp: entry.timestamp, id: entry.id, original: entry });
+  plugin.flushDrafts();
+  const stored = app.loadLocalStorage(key) as any;
+  assert.equal(stored.body, "Changed");
+  assert.equal(stored.original.body, "Original body");
+  assert.equal(stored.original.source, undefined);
+  assert.deepEqual(app.loadLocalStorage("karpathy:edit-drafts"), [key]);
+  // A draft without the source still detects a changed note before saving.
+  await plugin.store.update(entry, "Changed elsewhere");
+  await assert.rejects(plugin.store.update(plugin.readDraft(key)!.original!, "Changed"), /changed elsewhere/);
+  const save = app.saveLocalStorage.bind(app);
+  app.saveLocalStorage = () => { throw new Error("QuotaExceededError"); };
+  const before = Notice.messages.length;
+  for (let i = 0; i < 5; i++) { plugin.writeDraft(key, () => ({ body: `typing ${i}`, timestamp: entry.timestamp, id: entry.id })); plugin.flushDrafts(); }
+  assert.equal(Notice.messages.length - before, 1);
+  app.saveLocalStorage = save;
+  plugin.flushDrafts();
+  assert.equal((app.loadLocalStorage(key) as any).body, "typing 4");
+  await plugin.store.close(); await plugin.links.close();
+});
+
+test("Edit drafts for notes that no longer exist are pruned at startup", async () => {
+  const { app, plugin } = fixture();
+  const date = new Date(2026, 10, 2, 9);
+  await plugin.store.capture("Kept", date, "kept");
+  await plugin.store.capture("Gone", new Date(2026, 10, 2, 10), "gone");
+  const entries = await Promise.all(app.vault.getMarkdownFiles().map(async file => (await plugin.store.entries(file))[0]));
+  for (const entry of entries) plugin.writeDraft(plugin.draftKey(entry), { body: `${entry.body} draft`, timestamp: entry.timestamp, id: entry.id, original: entry });
+  plugin.flushDrafts();
+  const gone = entries.find(entry => entry.id === "gone")!, kept = entries.find(entry => entry.id === "kept")!;
+  await plugin.store.remove(gone);
+  plugin.pruneEditDrafts();
+  assert.equal(app.loadLocalStorage(plugin.draftKey(gone)), null);
+  assert.equal((app.loadLocalStorage(plugin.draftKey(kept)) as any).body, "Kept draft");
+  assert.deepEqual(app.loadLocalStorage("karpathy:edit-drafts"), [plugin.draftKey(kept)]);
+  plugin.writeDraft(plugin.draftKey(kept), null);
+  assert.equal(app.loadLocalStorage("karpathy:edit-drafts"), null);
+  await plugin.store.close(); await plugin.links.close();
+});

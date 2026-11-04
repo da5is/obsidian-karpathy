@@ -8,6 +8,8 @@ export interface IndexRecord {
   id: string;
   timestamp: string;
   hash?: number;
+  // Fingerprint of the whole file text: lets verification skip parsing unchanged files.
+  raw?: number;
 }
 
 // IndexedDB is device-local, outside the synced vault. Losing it only costs a

@@ -1,6 +1,13 @@
 # Compatibility and performance checks
 
-Release: 2.3.3. All timing values below are milliseconds.
+Release: 2.3.5. All timing values below are milliseconds.
+
+2.3.5 (KAR-034–KAR-037) reduces background work and hardens drafts. 163
+automated tests and the build pass on Linux/Node 26.13; each of the eight new
+tests fails against 2.3.4. Not verified natively: Obsidian's folder rename and
+delete events (the link cache handles hosts that do or do not also report each
+child), verification pausing when the window is hidden, and a real
+localStorage quota error.
 
 2.3.3 enables the three-Enter save gesture in Edit (KAR-032). 151 automated tests
 and the build pass on Linux/Node 26.13; the new Edit test fails without the

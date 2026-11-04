@@ -1,5 +1,5 @@
 import { StorageHealth } from "./health";
-import { FileSystemAdapter, getLinkpath, Notice, Platform, Plugin, TAbstractFile, TFile } from "obsidian";
+import { FileSystemAdapter, getLinkpath, Notice, Platform, Plugin, TAbstractFile, TFile, TFolder } from "obsidian";
 import { baseFolder, Entry, entryPrefix } from "./model";
 import { DEFAULT_SETTINGS, KarpathySettingsTab, parseSettings, Settings, themePrefixColor } from "./settings";
 import { Store } from "./store";
@@ -8,6 +8,8 @@ import { TagIndex } from "./tags";
 import { KarpathyView, VIEW_TYPE } from "./view";
 
 export interface Draft { body: string; timestamp: string; id: string; original?: Entry }
+const EDIT_DRAFT = "karpathy:edit:";
+const EDIT_DRAFTS = "karpathy:edit-drafts";
 
 export default class KarpathyPlugin extends Plugin {
   settings: Settings = { ...DEFAULT_SETTINGS };
@@ -23,6 +25,7 @@ export default class KarpathyPlugin extends Plugin {
   private draftOwners = new Map<string, { owner: object; focus: () => void }>();
   private pendingDrafts = new Map<string, Draft | null | (() => Draft | null)>();
   private draftTimer?: ReturnType<typeof setTimeout>;
+  private draftFailures = new Set<string>();
 
   claimDraft(key: string, owner: object, focus: () => void): boolean {
     const current = this.draftOwners.get(key);
@@ -86,6 +89,8 @@ export default class KarpathyPlugin extends Plugin {
     this.store = new Store(this.app, this.settings.baseFolder);
     this.store.onProgress = (remaining, total) => { for (const view of this.views()) view.indexProgress(remaining, total); };
     this.store.onReconciled = () => this.changed();
+    // Background verification only matters while a stream is open and visible.
+    this.store.active = () => !document.hidden && this.views().length > 0;
     this.registerDomEvent(document, "visibilitychange", () => { if (document.hidden) this.flushDrafts(); });
     this.registerDomEvent(window, "pagehide", () => this.flushDrafts());
     this.register(() => this.flushDrafts());
@@ -143,6 +148,7 @@ export default class KarpathyPlugin extends Plugin {
         this.fileChanged(file, oldPath);
       }));
       this.store.reindex();
+      this.pruneEditDrafts();
       // A stream restored with the workspace may have rendered before the vault
       // finished loading (no entries yet); refresh it now that files are known.
       this.changed();
@@ -199,6 +205,9 @@ export default class KarpathyPlugin extends Plugin {
 
   private fileChanged(file: TAbstractFile, oldPath?: string): void {
     this.links.changed(file, oldPath);
+    // A newly created empty folder (such as a month's first capture) holds no
+    // entries; files placed in it report their own events.
+    if (file instanceof TFolder && !oldPath && !file.children.length && this.app.vault.getAbstractFileByPath(file.path) === file) return;
     const base = this.settings.baseFolder;
     const relevant = (path: string) => !base || path === base || path.startsWith(`${base}/`) || base.startsWith(`${path}/`);
     if (!relevant(file.path) && (!oldPath || !relevant(oldPath))) return;
@@ -248,7 +257,7 @@ export default class KarpathyPlugin extends Plugin {
   }
 
   draftKey(entry?: Entry): string {
-    return entry ? `karpathy:edit:${entry.path}:${entry.id}` : `karpathy:capture:${this.settings.baseFolder}`;
+    return entry ? `${EDIT_DRAFT}${entry.path}:${entry.id}` : `karpathy:capture:${this.settings.baseFolder}`;
   }
   readDraft(key: string): Draft | null {
     const pending = this.pendingDrafts.get(key);
@@ -273,9 +282,49 @@ export default class KarpathyPlugin extends Plugin {
   }
   flushDrafts(): void {
     clearTimeout(this.draftTimer); this.draftTimer = undefined;
-    for (const [key, draft] of this.pendingDrafts) {
-      try { this.app.saveLocalStorage(key, typeof draft === "function" ? draft() : draft); this.pendingDrafts.delete(key); }
-      catch (error) { this.report(new Error("Could not preserve the draft on this device: " + String(error))); }
+    const editing = [...this.pendingDrafts.keys()].some(key => key.startsWith(EDIT_DRAFT));
+    const edits = new Set(editing ? this.editDraftKeys() : []);
+    let listChanged = false;
+    for (const [key, pending] of this.pendingDrafts) {
+      const draft = typeof pending === "function" ? pending() : pending;
+      try {
+        this.app.saveLocalStorage(key, draft && draft.original ? { ...draft, original: { ...draft.original, source: undefined } } : draft);
+        this.pendingDrafts.delete(key);
+        this.draftFailures.delete(key);
+        if (key.startsWith(EDIT_DRAFT)) {
+          if (draft) { if (!edits.has(key)) { edits.add(key); listChanged = true; } }
+          else if (edits.delete(key)) listChanged = true;
+        }
+      } catch (error) {
+        // Keep retrying silently: a full device store must not raise a notice per keystroke.
+        if (this.draftFailures.has(key)) continue;
+        this.draftFailures.add(key);
+        this.report(new Error("Could not preserve the draft on this device: " + String(error)));
+      }
+    }
+    if (listChanged) {
+      try { this.app.saveLocalStorage(EDIT_DRAFTS, edits.size ? [...edits] : null); }
+      catch (error) { console.warn("[karpathy] Could not record edit drafts", error); }
+    }
+  }
+  private editDraftKeys(): string[] {
+    const value: unknown = this.app.loadLocalStorage(EDIT_DRAFTS);
+    return Array.isArray(value) ? value.filter((key): key is string => typeof key === "string" && key.startsWith(EDIT_DRAFT)) : [];
+  }
+  // Edit drafts for notes that no longer exist cannot be reopened; remove them
+  // after the vault has loaded so device-local storage does not grow forever.
+  pruneEditDrafts(): void {
+    const keys = this.editDraftKeys();
+    const kept = keys.filter(key => {
+      if (this.draftOwners.has(key) || this.pendingDrafts.has(key)) return true;
+      const path = key.slice(EDIT_DRAFT.length, key.lastIndexOf(":"));
+      if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) return true;
+      try { this.app.saveLocalStorage(key, null); return false; }
+      catch { return true; }
+    });
+    if (kept.length !== keys.length) {
+      try { this.app.saveLocalStorage(EDIT_DRAFTS, kept.length ? kept : null); }
+      catch (error) { console.warn("[karpathy] Could not record edit drafts", error); }
     }
   }
 

@@ -62,7 +62,9 @@ budget and separate item limits. The small ordering index grows with file count.
 Wikilink filenames and aliases have a separate device-local cache, validated
 against live file stats on startup. Completion options are prepared after layout
 readiness and shared across editors. Host metadata is reconciled at startup;
-subsequent file/alias events update individual records. Completion still waits
+subsequent file/alias events update individual records. Folder events (2.3.5)
+update only the files inside that folder; creating a folder, such as a new
+month's, no longer rebuilds the whole cache. Completion still waits
 if requested before preparation finishes. An explicit refresh also rebuilds
 suggestions. No Markdown bodies are scanned for wikilink completion.
 
@@ -90,15 +92,26 @@ across devices. A last-write-wins sync policy can still discard a competing edit
 or rescue increment. Notes and attachments may arrive separately. Sync completion
 and backups remain the sync tool's responsibility.
 
-Drafts are device-local. Cached search text is also stored locally and is removed
+Drafts are device-local. Since 2.3.5, a stored Edit draft keeps the original
+entry's body and metadata but not a second copy of its whole file; before
+saving, it is checked against the note's current body, time and rescue count,
+and the note's current YAML properties are preserved. Edit drafts are listed
+under `karpathy:edit-drafts`; at startup, drafts whose note no longer exists
+are removed (drafts saved before 2.3.5 are not listed and are left alone). If
+the device refuses a draft write, one notice is shown and the write is retried
+silently until it succeeds. Cached search text is also stored locally and is removed
 when the corresponding deletion is processed, or when the index is rebuilt.
 
-## Verification and unavailable files (2.0.1, revised 2.3.0)
+## Verification and unavailable files (2.0.1, revised 2.3.0 and 2.3.5)
 
 Warm cached results remain available immediately. Every minute, a background
 check rereads a rotating slice of about one fifteenth of the entries (at least
-eight), so each file is verified roughly every fifteen minutes without a
-full-vault burst. It reads eight files at a time with pauses between batches,
+eight, at most 256), so each file is verified roughly every fifteen minutes
+without a full-vault burst; streams above about 3,800 entries take
+proportionally longer. Since 2.3.5 the check runs only while a stream view is
+open and Obsidian is visible, and a file whose whole text matches its stored
+fingerprint is not parsed again (records from earlier releases gain the
+fingerprint the first time they are verified). It reads eight files at a time with pauses between batches,
 detecting changes that preserved size and modification time while the plugin
 was closed. Unchanged files are not rewritten to the index, and files not already
 in the memory caches are not added to them. Results may be stale until
@@ -108,5 +121,6 @@ Search text from releases before 2.3.0 included paths and timestamps. Those
 records are replaced as entries change or are verified, normally within fifteen
 minutes; Refresh stream and cache replaces them immediately.
 Unreadable files are excluded from results and reported beside the count. They
-are retried on the next one-minute maintenance tick or a relevant file event.
+are retried on the next one-minute maintenance tick or a relevant file event;
+a file that stays unreadable no longer refreshes the stream each minute.
 Maintenance stops when the plugin closes; no entry files are changed by verification.

@@ -37,6 +37,8 @@ export class Store {
   private verificationTimer?: ReturnType<typeof setTimeout>;
   onReconciled?: () => void;
   onProgress?: (remaining: number, total: number) => void;
+  // Scheduled verification is skipped while this returns false (no visible stream).
+  active?: () => boolean;
   private verifyCursor = 0;
   // Persisted records for paths the vault has not reported yet (vault still loading).
   private saved = new Map<string, IndexRecord>();
@@ -53,12 +55,13 @@ export class Store {
   }
   // Each minute, verify about 1/15 of entries (plus failures), so every file is
   // reread roughly every fifteen minutes without a periodic full-vault burst.
+  // At most 256 files per minute: streams above ~3,800 entries take longer.
   verifySlice(): Promise<void> {
     if (this.verification) return this.verification;
     this.verification = (async () => {
       await this.initial;
       const all = [...this.candidates.values()];
-      const count = Math.min(all.length, Math.max(8, Math.ceil(all.length / 15)));
+      const count = Math.min(all.length, Math.max(8, Math.min(256, Math.ceil(all.length / 15))));
       const files = new Set(all.filter(file => this.failures.has(file.path)));
       for (let i = 0; i < count; i++) files.add(all[(this.verifyCursor + i) % all.length]);
       this.verifyCursor = all.length ? (this.verifyCursor + count) % all.length : 0;
@@ -74,14 +77,24 @@ export class Store {
         if (this.failures.has(file.path) || this.dirty.has(file.path)) {
           const failed = this.failures.has(file.path);
           await this.entries(file, false);
-          return failed;
+          // Only a recovery changes what the stream shows; a file that is still
+          // unreadable must not refresh every view each minute.
+          return failed && !this.failures.has(file.path);
         }
         const epoch = this.epochs.get(file.path) ?? 0;
         const { mtime, size } = file.stat;
         try {
           const text = await this.app.vault.read(file);
+          // Unchanged bytes need no YAML parse, cache update, or index write.
+          const record = this.records.get(file.path);
+          if (record?.raw !== undefined && record.raw === fingerprint(text) && record.mtime === mtime && record.size === size &&
+              (this.epochs.get(file.path) ?? 0) === epoch && !this.dirty.has(file.path)) return false;
           return await this.remember(file, text, epoch, mtime, size, false, this.cache.has(file.path));
-        } catch { await this.entries(file, false); return true; }
+        } catch {
+          // A cached copy may still serve the file; only a new failure is a change.
+          await this.entries(file, false);
+          return this.failures.has(file.path);
+        }
       }));
       if (results.some(Boolean)) changed = true;
       await this.flushIndex();
@@ -92,6 +105,7 @@ export class Store {
   private scheduleVerification(): void {
     if (this.closed) return;
     this.verificationTimer = setTimeout(() => {
+      if (this.active && !this.active()) { this.scheduleVerification(); return; }
       void this.verifySlice().catch(error => console.warn("[karpathy] Verification failed", error))
         .finally(() => this.scheduleVerification());
     }, 60000);
@@ -257,10 +271,13 @@ export class Store {
         file.stat.mtime !== mtime || file.stat.size !== size) return verifyOnly ? false : entries;
     const entry = entries[0];
     const search = searchText(entry);
-    const record: IndexRecord = { path: file.path, mtime, size, id: entry?.id ?? "", timestamp: entry?.timestamp ?? "", hash: fingerprint(search) };
+    const record: IndexRecord = { path: file.path, mtime, size, id: entry?.id ?? "", timestamp: entry?.timestamp ?? "", hash: fingerprint(search), raw: fingerprint(text) };
     const previous = this.records.get(file.path);
-    const unchanged = !!previous && previous.mtime === mtime && previous.size === size && previous.id === record.id &&
+    // `same`: nothing the stream shows changed. Records from before 2.3.5 lack
+    // `raw`; they are rewritten once without counting as a visible change.
+    const same = !!previous && previous.mtime === mtime && previous.size === size && previous.id === record.id &&
       previous.timestamp === record.timestamp && previous.hash === record.hash;
+    const unchanged = same && previous!.raw === record.raw;
     if (!previous || previous.id !== record.id || previous.timestamp !== record.timestamp) this.orderDirty = true;
     this.failures.delete(file.path);
     this.dirty.delete(file.path);
@@ -273,7 +290,7 @@ export class Store {
     if (unchanged) this.pendingIndex.delete(file.path);
     else if (persist) await this.index.put(record, search);
     else this.pendingIndex.set(file.path, { record, text: search });
-    return verifyOnly ? true : entries;
+    return verifyOnly ? !same : entries;
   }
   async entries(file: TFile, persist = true): Promise<Entry[]> {
     await this.initial;

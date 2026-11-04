@@ -274,3 +274,93 @@ test("events keep the persisted record until re-read; closing drops unread chang
   assert.equal((await reopened.page({ file: 0, offset: 0 }, 1, "edited offline")).entries.length, 1);
   await reopened.close();
 });
+
+test("verification skips parsing unchanged files and caps each slice", async context => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (let i = 0; i < 4000; i++) await app.vault.create(entryPath("Karpathy", date, `c-${i}`), serializeEntry(`c-${i}`, date.toISOString(), "body"));
+  const store = new Store(app as any, "Karpathy");
+  await store.countEntries();
+  const remember = context.mock.method(store as any, "remember");
+  const reads = app.vault.reads;
+  await store.verifySlice();
+  // 4000 / 15 would be 267; the per-minute slice is capped at 256.
+  assert.equal(app.vault.reads - reads, 256);
+  assert.equal(remember.mock.callCount(), 0);
+  // The next slice covers candidates 256-511 in verification order.
+  const changed = [...store["candidates"].values()][300];
+  const id = (await store.entries(changed))[0].id;
+  app.vault.texts.set(changed.path, serializeEntry(id, date.toISOString(), "same stat edit"));
+  remember.mock.resetCalls();
+  let reconciled = 0;
+  store.onReconciled = () => { reconciled++; };
+  await store.verifySlice();
+  assert.equal(remember.mock.callCount(), 1);
+  assert.equal(reconciled, 1);
+  await store.close();
+});
+
+test("records without a raw fingerprint are upgraded once without a visible change", async context => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (let i = 0; i < 5; i++) await app.vault.create(entryPath("Karpathy", date, `u-${i}`), serializeEntry(`u-${i}`, date.toISOString(), "body"));
+  const store = new Store(app as any, "Karpathy");
+  await store.countEntries();
+  for (const record of store["records"].values()) delete record.raw;
+  let reconciled = 0, written = 0;
+  store.onReconciled = () => { reconciled++; };
+  context.mock.method(LocalIndex.prototype, "putMany", async (values: unknown[]) => { written += values.length; });
+  await store.reconcile();
+  assert.equal(written, 5);
+  assert.equal(reconciled, 0);
+  const remember = context.mock.method(store as any, "remember");
+  await store.reconcile();
+  assert.equal(remember.mock.callCount(), 0);
+  await store.close();
+});
+
+test("a persistently unreadable file does not signal a change each minute; recovery does", async () => {
+  const app = new App(), date = new Date(2026, 9, 30);
+  for (const id of ["ok", "bad"]) await app.vault.create(entryPath("Karpathy", date, id), serializeEntry(id, date.toISOString(), id));
+  const store = new Store(app as any, "Karpathy");
+  await store.countEntries();
+  const bad = store.files.find(file => file.path.includes("bad"))!;
+  store["cache"].clear();
+  const read = app.vault.read.bind(app.vault);
+  app.vault.read = file => file === bad ? Promise.reject(new Error("offline")) : read(file);
+  let reconciled = 0;
+  store.onReconciled = () => { reconciled++; };
+  await store.verifySlice();
+  assert.equal(reconciled, 1);
+  assert.ok(store.failures.has(bad.path));
+  await store.verifySlice();
+  await store.verifySlice();
+  assert.equal(reconciled, 1);
+  app.vault.read = read;
+  await store.verifySlice();
+  assert.equal(reconciled, 2);
+  assert.equal(store.failures.size, 0);
+  // A read error on a file still served from cache is not a change either.
+  app.vault.read = file => file === bad ? Promise.reject(new Error("offline")) : read(file);
+  await store.entries(bad);
+  await store.verifySlice();
+  await store.verifySlice();
+  assert.equal(reconciled, 2);
+  await store.close();
+});
+
+test("scheduled verification waits while no stream is visible", async context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const app = new App(), date = new Date(2026, 9, 30);
+  await app.vault.create(entryPath("Karpathy", date, "idle"), serializeEntry("idle", date.toISOString(), "idle"));
+  const store = new Store(app as any, "Karpathy");
+  let visible = false;
+  store.active = () => visible;
+  const slice = context.mock.method(store, "verifySlice", async () => {});
+  context.mock.timers.tick(60000);
+  context.mock.timers.tick(60000);
+  assert.equal(slice.mock.callCount(), 0);
+  visible = true;
+  context.mock.timers.tick(60000);
+  assert.equal(slice.mock.callCount(), 1);
+  context.mock.timers.reset();
+  await store.close();
+});

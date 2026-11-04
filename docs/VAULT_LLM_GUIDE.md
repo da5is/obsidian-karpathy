@@ -40,8 +40,6 @@ Recognize stream entries using **both** their path and YAML: beneath the base,
 `yyyy/yyyy-mm/yyyy-mm-dd-<suffix>.md`, with valid version-2 metadata. The suffix
 need not match the usual generated filename: renamed/conflict copies can also
 qualify. Arbitrary Markdown elsewhere remains ordinary Obsidian content.
-`yyyy-mm-dd.md` daily notes from version 1 are not version-2 entries. Do not
-convert, discard, or append new captures to them automatically.
 
 ## Complete entry example
 

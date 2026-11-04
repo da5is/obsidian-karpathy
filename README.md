@@ -17,8 +17,6 @@ Inspired by Andrej Karpathy's [append-and-review note](https://karpathy.bearblog
 
 Each entry is its own Markdown file, e.g. `Karpathy/2026/2026-10/2026-10-25-091530123-a1b2c3d4e5f6.md`.
 
-> **Version 2 uses a new storage format** and does not show or convert version 1 daily files. Update every device before using it, and don't downgrade.
-
 More detail: [usage](docs/usage.md) · [storage](docs/storage.md) · [compatibility and limits](docs/compatibility.md) · [guide for LLMs working in your vault](docs/VAULT_LLM_GUIDE.md)
 
 ## Install

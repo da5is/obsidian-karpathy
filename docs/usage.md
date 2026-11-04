@@ -34,8 +34,6 @@ Entries use standard YAML properties (`karpathy`, `id`, `created`, `rescued`, `r
 
 A rebuildable IndexedDB index stays on each device, outside the synced vault. It stores ordering and search data; entry files remain authoritative. Paging and memory caches stay bounded. Use **Refresh stream and cache** to rebuild the index. Conflicting copies with the same entry ID are shown separately and marked for review. Editing the same entry on two devices still depends on your sync tool's conflict policy.
 
-**Version 2 uses a new storage format.** There is no automatic conversion: existing version 1 daily files remain untouched and are not displayed. Start with a clean capture folder, keep a backup of any old notes you need, and update every device before using version 2. Do not downgrade after creating version 2 entries. See [storage details](storage.md).
-
 
 ## Other behavior
 

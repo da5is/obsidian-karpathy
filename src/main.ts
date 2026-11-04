@@ -4,6 +4,7 @@ import { baseFolder, Entry, entryPrefix } from "./model";
 import { DEFAULT_SETTINGS, KarpathySettingsTab, parseSettings, Settings, themePrefixColor } from "./settings";
 import { Store } from "./store";
 import { WikilinkIndex } from "./links";
+import { TagIndex } from "./tags";
 import { KarpathyView, VIEW_TYPE } from "./view";
 
 export interface Draft { body: string; timestamp: string; id: string; original?: Entry }
@@ -12,6 +13,7 @@ export default class KarpathyPlugin extends Plugin {
   settings: Settings = { ...DEFAULT_SETTINGS };
   store!: Store;
   readonly links = new WikilinkIndex(this.app);
+  readonly tags = new TagIndex(this.app);
   private folderObservers: MutationObserver[] = [];
   private observedExplorers: HTMLElement[] = [];
   private refreshTimer?: number;
@@ -117,12 +119,15 @@ export default class KarpathyPlugin extends Plugin {
       this.store.clear();
       this.store.reindex();
       this.links.clear();
+      this.tags.changed();
       void this.links.prepare().catch(error => this.report(error));
       this.changed();
     } });
-    this.registerEvent(this.app.metadataCache.on("changed", file => this.links.changed(file)));
+    this.registerEvent(this.app.metadataCache.on("changed", file => { this.links.changed(file); this.tags.changed(); }));
+    this.registerEvent(this.app.metadataCache.on("deleted", () => this.tags.changed()));
     let linksResolved = false;
     this.registerEvent(this.app.metadataCache.on("resolved", () => {
+      this.tags.changed();
       if (linksResolved) return;
       linksResolved = true;
       void this.links.reconcile().catch(error => this.report(error));

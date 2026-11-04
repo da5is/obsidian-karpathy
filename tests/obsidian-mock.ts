@@ -54,6 +54,15 @@ export function parseFrontMatterAliases(frontmatter?: Record<string, unknown>) {
   return typeof aliases === "string" ? [aliases] : Array.isArray(aliases) ? aliases.filter((alias): alias is string => typeof alias === "string") : null;
 }
 
+export function getAllTags(cache: { tags?: { tag: string }[]; frontmatter?: Record<string, unknown> }) {
+  const tags = (cache.tags ?? []).map(item => item.tag);
+  const front = cache.frontmatter?.tags;
+  for (const tag of typeof front === "string" ? front.split(/[,\s]+/) : Array.isArray(front) ? front : []) {
+    if (typeof tag === "string" && tag) tags.push(tag.startsWith("#") ? tag : `#${tag}`);
+  }
+  return tags.length ? tags : null;
+}
+
 export class Scope {
   handlers: { modifiers: string[]; key: string; callback: (event: KeyboardEvent) => unknown }[] = [];
   constructor(private parent?: Scope) {}
@@ -140,7 +149,7 @@ export class App {
   scope = new Scope();
   vault = new MemoryVault();
   local = new Map<string, unknown>();
-  fileCaches = new Map<string, { frontmatter?: Record<string, unknown> }>();
+  fileCaches = new Map<string, { frontmatter?: Record<string, unknown>; tags?: { tag: string }[] }>();
   cacheReads = 0;
   linkRequests: { path: string; source: string }[] = [];
   workspace = {

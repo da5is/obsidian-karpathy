@@ -68,6 +68,12 @@ subsequent file/alias events update individual records. Completion still waits
 if requested before preparation finishes. An explicit refresh also rebuilds
 suggestions. No Markdown bodies are scanned for wikilink completion.
 
+Hashtag suggestions are not cached on the device. They come from Obsidian's
+metadata cache (its vault-wide tag table where available, otherwise each
+Markdown file's cached tags) and are rebuilt on the next suggestion after any
+metadata change, deletion, resolve, or explicit refresh. No Markdown bodies are
+read for them either.
+
 See [performance checks](compatibility.md) for filesystem and real-IndexedDB
 measurements and their limits. The indexes grow with file count; these are not
 mobile-memory or OneDrive throughput guarantees.

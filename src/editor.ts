@@ -10,6 +10,7 @@ import { entryPrefix, uniqueId } from "./model";
 import { livePreview } from "./preview";
 import { nativeClipboardFiles } from "./clipboard";
 import { urlPaste } from "./url-paste";
+import { acceptingTagChangesNothing } from "./tags";
 import type { Scope, KeymapEventHandler } from "obsidian";
 
 const continueMarkup = insertNewlineContinueMarkupCommand({ nonTightLists: false });
@@ -28,6 +29,7 @@ export interface EditorOptions {
   scope?: Scope;
   resolveImage?: (link: string) => string | null;
   completeLink?: CompletionSource;
+  completeTag?: CompletionSource;
 }
 
 export class CaptureEditor {
@@ -39,10 +41,13 @@ export class CaptureEditor {
   private enterCount = 0;
   private handlingEnter = false;
   private hotkeys: KeymapEventHandler[] = [];
+  private completing: boolean;
   colorVersion = 0;
 
   constructor(parent: HTMLElement, private options: EditorOptions) {
     const documentMode = new Compartment();
+    const sources = [options.completeLink, options.completeTag].filter((source): source is CompletionSource => !!source);
+    this.completing = sources.length > 0;
     const editor = this;
     // Plain Markdown support: markdown() would also bundle HTML/CSS/JS parsers
     // for embedded code, roughly doubling main.js for highlighting we don't need.
@@ -77,9 +82,9 @@ export class CaptureEditor {
               return { effects: documentMode.reconfigure(mode(transaction.newDoc.length)) };
             return null;
           }),
-          options.completeLink ? [
+          sources.length ? [
             autocompletion({
-              override: [options.completeLink], defaultKeymap: false, icons: false,
+              override: sources, defaultKeymap: false, icons: false,
               activateOnTypingDelay: 50, interactionDelay: 0, maxRenderedOptions: 20,
               tooltipClass: () => "karpathy-link-suggestions",
               compareCompletions: (a, b) => (a.displayLabel ?? a.label).localeCompare(b.displayLabel ?? b.label) || (a.detail ?? "").localeCompare(b.detail ?? "")
@@ -163,7 +168,7 @@ export class CaptureEditor {
             { key: "Meta-Enter", run: () => { options.save(); return true; } },
             { key: "Shift-Enter", run: insertNewline },
             { key: "Enter", run: view => this.handleEnter(view) },
-            ...(options.completeLink ? [{ key: "Tab", run: acceptCompletion }, ...completionKeymap.filter(binding => binding.key !== "Enter")] : []),
+            ...(sources.length ? [{ key: "Tab", run: acceptCompletion }, ...completionKeymap.filter(binding => binding.key !== "Enter")] : []),
             { key: "Mod-b", run: () => this.wrap("**") },
             { key: "Mod-i", run: () => this.wrap("*") },
             { key: "Mod-k", run: () => this.wrap("[", "](url)") }
@@ -182,7 +187,7 @@ export class CaptureEditor {
       });
       if (handler) this.hotkeys.push(handler);
     }
-    if (options.completeLink) {
+    if (this.completing) {
       // Dismiss suggestions before Obsidian's modal-level Escape handler.
       const handler = options.scope?.register([], "Escape", event => {
         if (!this.view.hasFocus || event.isComposing || !closeCompletion(this.view)) return;
@@ -196,7 +201,10 @@ export class CaptureEditor {
 
   private handleEnter(view: EditorView): boolean {
     if (view.composing || view.state.readOnly) return false;
-    if (this.options.completeLink && acceptCompletion(view)) return true;
+    if (this.completing) {
+      if (acceptingTagChangesNothing(view.state)) closeCompletion(view);
+      else if (acceptCompletion(view)) return true;
+    }
     this.handlingEnter = true;
     try {
       const selection = view.state.selection.main;
@@ -259,13 +267,13 @@ export class CaptureEditor {
   }
   lock(value: boolean): void {
     if (value) this.enterCount = 0;
-    if (value && !this.destroyed && this.options.completeLink) closeCompletion(this.view);
+    if (value && !this.destroyed && this.completing) closeCompletion(this.view);
     if (!this.destroyed) this.view.dispatch({ effects: this.readOnly.reconfigure(EditorState.readOnly.of(value)) });
   }
   setBody(body: string): void {
     if (this.destroyed) return;
     this.enterCount = 0;
-    if (this.options.completeLink) closeCompletion(this.view);
+    if (this.completing) closeCompletion(this.view);
     this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: body }, selection: { anchor: 0 } });
   }
   insert(text: string): void {

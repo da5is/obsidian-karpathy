@@ -97,7 +97,16 @@ re-renders. No further defects found:
   movement, paste, Shift+Enter, focus loss) and list/image handling. Trailing
   newlines are trimmed on save. Native check pending.
 
-## Outstanding validation work — updated 2026-11-03, 2.3.3
+- **KAR-033 (usability, user request, 2026-11-04, 2.3.4): Hashtag
+  autocomplete.** Typing `#` plus a character in capture or Edit suggests
+  existing vault tags from Obsidian's metadata cache, deduplicated
+  case-insensitively. Enter/Tab completes the whole word; a fully typed tag lets
+  Enter fall through so the three-Enter save is unchanged. Skipped mid-word, in
+  code and inside wikilinks. Uses the undocumented `metadataCache.getTags()`
+  when present, otherwise per-file `getAllTags`. Native check pending,
+  including that `getTags()` exists and suggestions refresh after a new tag is saved.
+
+## Outstanding validation work — updated 2026-11-04, 2.3.4
 
 The original KAR-001–KAR-015 findings below have implementation changes shipped.
 Current work is validation/profiling and documented API limitations:
@@ -109,7 +118,8 @@ Current work is validation/profiling and documented API limitations:
   2.3.x release misbehaves natively.
 - 2.3.2/2.3.3 native checks: a stream tab left open at quit shows entries right
   after relaunch (KAR-030); three Enters at the end save and close Edit
-  (KAR-032). Watch for a recurrence of the unconfirmed Edit hashtag report
+  (KAR-032). 2.3.4: hashtag suggestions in capture and Edit, refreshed after
+  saving a new tag (KAR-033). Watch for a recurrence of the unconfirmed Edit hashtag report
   (KAR-031).
 - Physical iPhone/iPad/Android keyboards, clipboard, background/resume, cache
   eviction, attachment behavior, scrolling latency, and peak memory.

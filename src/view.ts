@@ -256,6 +256,7 @@ export class KarpathyView extends ItemView {
       colors: this.plugin.settings.prefixColors,
       tripleEnter: true,
       fetchTitles: () => this.plugin.settings.fetchUrlTitles,
+      completeTag: this.plugin.tags.source(),
       completeLink: this.plugin.links.source(() => entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
       resolveImage: link => this.plugin.imageSource(link, entryPath(base, new Date(this.draft?.timestamp ?? Date.now()), this.draft?.id ?? "draft")),
       change: () => {
@@ -756,6 +757,7 @@ class EntryEditor extends Modal {
     this.editor = editor = new CaptureEditor(host, {
       body: this.draft.body, colors: this.plugin.settings.prefixColors, tripleEnter: true,
       completeLink: this.plugin.links.source(() => this.entry.path),
+      completeTag: this.plugin.tags.source(),
       resolveImage: link => this.plugin.imageSource(link, this.entry.path),
       change: () => {
         const draft = this.draft;

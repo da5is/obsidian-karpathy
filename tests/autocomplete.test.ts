@@ -149,3 +149,98 @@ test("suggestion rendering stays bounded and external file events update all-vau
     assert.equal(currentCompletions(editor.view.state)[0].detail, newFile.path);
   } finally { await stream.onClose(); }
 });
+
+async function tagged(app: App, path: string, tags: string[], frontmatter?: Record<string, unknown>) {
+  await app.vault.create(path, "");
+  app.fileCaches.set(path, { tags: tags.map(tag => ({ tag })), frontmatter });
+}
+
+test("typing # offers existing vault tags once each, and Enter completes the rest of the word", async () => {
+  const { app, plugin, stream } = fixture();
+  await tagged(app, "Notes/a.md", ["#idea", "#project/alpha"]);
+  await tagged(app, "Notes/b.md", ["#Idea", "#idea", "#2024"], { tags: ["reading"] });
+  await tagged(app, "Notes/c.md", ["#idea"]);
+  await stream.onOpen();
+  try {
+    const editor = stream["editor"]!;
+    type(editor.view, "#");
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(completionStatus(editor.view.state), null, "a bare # (heading) does not open suggestions");
+    type(editor.view, "i");
+    await until(() => completionStatus(editor.view.state) === "active");
+    assert.deepEqual(currentCompletions(editor.view.state).map(item => item.label), ["#idea"]);
+    editor.setBody("");
+    type(editor.view, "Next #");
+    startCompletion(editor.view);
+    await until(() => completionStatus(editor.view.state) === "active");
+    // Case variants collapse to the most used spelling; numeric-only tags and
+    // frontmatter tags follow Obsidian's rules.
+    assert.deepEqual(currentCompletions(editor.view.state).map(item => item.label).sort(), ["#idea", "#project/alpha", "#reading"]);
+    editor.setBody("Read #prfoo later");
+    editor.view.dispatch({ selection: { anchor: "Read #pr".length } });
+    startCompletion(editor.view);
+    await until(() => completionStatus(editor.view.state) === "active");
+    key(editor.view, "Enter");
+    assert.equal(editor.body, "Read #project/alpha later");
+    assert.equal(editor.view.state.selection.main.head, "Read #project/alpha".length);
+    assert.equal(plugin.store.files.length, 0);
+  } finally { await stream.onClose(); }
+});
+
+test("tags are not offered mid-word, in code, or inside wikilinks", async () => {
+  const { app, stream } = fixture();
+  await tagged(app, "Notes/a.md", ["#idea"]);
+  await stream.onOpen();
+  try {
+    const editor = stream["editor"]!;
+    for (const [text, cursor] of [["issue#i", 7], ["`#i`", 3], ["```\n#i\n```", 6], ["[[Note #i", 9]] as const) {
+      editor.setBody(text);
+      editor.view.dispatch({ selection: { anchor: cursor } });
+      startCompletion(editor.view);
+      await until(() => completionStatus(editor.view.state) !== "pending");
+      assert.equal(completionStatus(editor.view.state), null, text);
+    }
+  } finally { await stream.onClose(); }
+});
+
+test("a fully typed tag does not swallow an Enter of the three-Enter save", async () => {
+  const { app, plugin, stream } = fixture();
+  await tagged(app, "Notes/a.md", ["#idea", "#ideas"]);
+  await stream.onOpen();
+  try {
+    const editor = stream["editor"]!;
+    type(editor.view, "Note #idea");
+    await until(() => completionStatus(editor.view.state) === "active");
+    assert.equal(currentCompletions(editor.view.state).length, 2);
+    key(editor.view, "Enter"); key(editor.view, "Enter"); key(editor.view, "Enter");
+    await until(() => plugin.store.files.length === 1);
+    assert.equal((await plugin.store.entries(plugin.store.files[0]))[0].body, "Note #idea");
+  } finally { await stream.onClose(); }
+});
+
+test("Edit offers tags, Obsidian's tag table is preferred, and metadata changes refresh suggestions", async () => {
+  const { app, plugin, stream } = fixture();
+  (app.metadataCache as any).getTags = () => ({ "#reading": 3, "#Reading": 1 });
+  await plugin.store.capture("Original", new Date(2025, 0, 1), "edit-tags");
+  await stream.onOpen();
+  try {
+    stream.contentEl.querySelector<HTMLButtonElement>('[aria-label="Edit entry"]')!.click();
+    const modal = document.querySelector<HTMLElement>(".karpathy-edit-modal")!;
+    const editor = EditorView.findFromDOM(modal.querySelector(".cm-editor")!)!;
+    editor.dispatch({ selection: { anchor: editor.state.doc.length } });
+    type(editor, " #re");
+    await until(() => completionStatus(editor.state) === "active");
+    assert.deepEqual(currentCompletions(editor.state).map(item => item.label), ["#reading"]);
+    key(editor, "Tab");
+    assert.equal(editor.state.doc.toString(), "Original #reading");
+    (app.metadataCache as any).getTags = () => ({ "#reading": 3, "#recipes": 1 });
+    plugin.tags.changed();
+    type(editor, " #re");
+    await until(() => currentCompletions(editor.state).length === 2);
+    key(editor, "Escape");
+    assert.ok(modal.isConnected);
+    assert.equal(completionStatus(editor.state), null);
+    modal.querySelector<HTMLButtonElement>(".mod-cta")!.click();
+    await until(() => !modal.isConnected);
+  } finally { await stream.onClose(); }
+});

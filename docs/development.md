@@ -16,7 +16,7 @@ npm run build
 
 A clean source export was verified with a fresh dependency install, all 120 tests,
 the build, and fixture generation on Windows/Node 24 for 2.2.2. The 2.3.0 suite
-(147 tests; 151 in 2.3.3) and build were run on Linux with Node 26. macOS/Linux
+(147 tests; 155 in 2.3.4) and build were run on Linux with Node 26. macOS/Linux
 portability has been reviewed but not executed on those operating systems.
 
 No Obsidian installation, personal vault, credentials, or previous chat is needed
@@ -68,6 +68,9 @@ from mocked tests. If the host is unavailable, state that gap explicitly.
    first press moves below it, then three more send. Check that typing or
    Shift+Enter resets the count and that existing blank lines do not shorten it.
 3. Complete `[[Project` and `[[Launch` in capture and Edit; verify the saved target.
+   Type `#` plus the start of an existing tag in both, complete it, then save a
+   new tag and confirm it is suggested next time. Type a full tag and press
+   Enter three times: it should save without a fourth Enter.
 4. Rescue, edit, toggle a checkbox, and delete one sample; inspect the Markdown.
 5. Search for `sample`; refresh, reload, and verify restored entries and drafts.
 6. Open `clipboard-sample.html` in a browser. Copy just the linked text; with

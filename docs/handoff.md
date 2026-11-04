@@ -4,15 +4,21 @@ Read `AGENTS.md`, then `docs/development.md`. Inspect Git status, recent commits
 and `manifest.json` before changing anything. The repository is sufficient to
 continue; earlier chat history and untracked helpers are not required.
 
-## Current snapshot — 2026-11-03, 2.3.3
+## Current snapshot — 2026-11-04, 2.3.4
 
 Repository: https://github.com/da5is/obsidian-karpathy; branch: `main`.
 The tag `known-good-2.2.13` marks the last release before the 2.3.0
 performance/usability pass; revert to it if 2.3.0 misbehaves natively.
 
-2.3.3 (current) lets Edit save with three Enters at the end, like capture
+2.3.4 (current) adds hashtag autocomplete in capture and Edit (KAR-033, user
+request): `#` plus a character suggests existing vault tags; a fully typed tag
+does not use up an Enter of the save gesture. 155 automated tests pass on
+Linux/Node 26. Native verification, including that Obsidian's undocumented
+`metadataCache.getTags()` is present, is pending.
+
+2.3.3 lets Edit save with three Enters at the end, like capture
 (KAR-032, user request). The gesture uses capture's reset rules and list/image
-handling; trailing newlines are trimmed on save. 151 automated tests pass.
+handling; trailing newlines are trimmed on save.
 
 2.3.2 fixes a 2.3.0 regression (KAR-030): a stream tab restored at launch stayed
 empty until something was captured, because nothing refreshed it after the
@@ -33,10 +39,11 @@ test vault and run smoke checks 1–13 in `docs/development.md`, prioritizing 2
 (three-Enter save in capture and Edit) and 9–13 (filters, Done, Undo,
 highlights, warm startup, macOS/Linux file paste, relaunch with the stream
 open). 2.3.0 changed startup event timing (KAR-017), so also confirm entries
-edited while Obsidian was closed appear updated after launch. Record results in
+edited while Obsidian was closed appear updated after launch. Check hashtag
+suggestions (smoke check 3) in capture and Edit. Record results in
 `docs/compatibility.md`; if startup or Undo misbehaves, revert to
 `known-good-2.2.13` and log the failure as a KAR item. The next code release
-is 2.3.4.
+is 2.3.5.
 
 2.3.0 works through KAR-016–KAR-029 (see `docs/backlog.md`): `main.js` drops
 from 269 KB to 132 KB by not bundling embedded HTML/CSS/JS parsers; vault events
@@ -89,7 +96,9 @@ physical keyboard autocorrection remains to be verified on mobile.
   line moves below it without counting; three further Enters send. The next
   capture stays empty and focused on its first line. Since 2.3.3 Edit uses the
   same gesture: three Enters at the end save and close the edit window.
-- Wikilink completion offers filenames/aliases across the vault. Clipboard link
+- Wikilink completion offers filenames/aliases across the vault. Hashtag
+  completion offers existing vault tags after `#` plus one character; a fully
+  typed tag never consumes an Enter of the save gesture. Clipboard link
   labels prefer selected editor text, then matching HTML clipboard labels, then
   optional network title lookup, otherwise the bare URL. Preserve ordinary rich
   selections and code/link-destination pastes. Physical iOS format coverage is
@@ -110,14 +119,14 @@ physical keyboard autocorrection remains to be verified on mobile.
 
 ## Validation and outstanding work
 
-151 automated tests, TypeScript, and production bundling pass on Linux/Node 26
-for 2.3.3 (earlier releases: Windows/Node 24).
+155 automated tests, TypeScript, and production bundling pass on Linux/Node 26
+for 2.3.4 (earlier releases: Windows/Node 24).
 A fresh source export with fresh dependencies, build, and generated test vault
 was checked for 2.2.2. A native Windows Obsidian 1.14.5 save/focus smoke check
 passed for 2.2.3. The 2.2.4 native repeat failed to obtain input geometry from
 the computer-use tool; do not call that release physically validated.
 
-Open work: native checks for 2.3.0–2.3.3 (warm startup, relaunch with the stream
+Open work: native checks for 2.3.0–2.3.4 (hashtag suggestions, warm startup, relaunch with the stream
 open, filters/Done/Undo/highlight visuals, Finder/Linux file paste, three-Enter
 save in Edit); watch for a recurrence of KAR-031; physical iPhone/iPad/Android input, clipboard, lifecycle and memory;
 minimum/current Obsidian and macOS/Linux; native pop-outs; OneDrive conflicts

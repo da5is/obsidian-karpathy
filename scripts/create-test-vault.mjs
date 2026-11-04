@@ -18,7 +18,7 @@ async function write(path, content) {
   await writeFile(destination, content, { flag: "wx" });
 }
 for (const [name, content] of assets) await write(`.obsidian/plugins/karpathy/${name}`, content);
-await write("Reference/Project Alpha.md", '---\naliases: [Launch]\n---\n\n# Project Alpha\n\nA disposable wikilink target.\n');
+await write("Reference/Project Alpha.md", '---\naliases: [Launch]\n---\n\n# Project Alpha\n\nA disposable wikilink target. #project/alpha #idea\n');
 await write("Other/Project Alpha.md", "# Another Project Alpha\n\nUse the folder names to distinguish completion results.\n");
 const bodies = [
   "todo: sample capture\n\n- [ ] Check this task in the stream\n- [ ] Edit and rescue this entry",
